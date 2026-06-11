@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>🐢 거북목 · 공부 감지기</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --green: #3fb950; --red: #f85149; --yellow: #d29922;
+      --blue: #58a6ff; --purple: #bc8cff;
+      --text: #c9d1d9; --muted: #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',sans-serif; min-height:100dvh; display:flex; flex-direction:column; }
+    header { padding:11px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10; }
+    h1 { font-size:1rem; font-weight:700; }
+    .hdr-right { display:flex; gap:8px; align-items:center; }
+    .fps { font-size:0.7rem; color:var(--muted); font-family:monospace; }
+    .main { flex:1; max-width:720px; width:100%; margin:0 auto; padding:13px; display:flex; flex-direction:column; gap:11px; }
+
+    /* ── Video ── */
+    .video-wrap { position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+    #inputVideo,#outputCanvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    #inputVideo  { transform:scaleX(-1); }
+    #outputCanvas{ transform:scaleX(-1); }
+    .vid-overlay { position:absolute; inset:0; pointer-events:none; display:flex; flex-direction:column; justify-content:space-between; padding:10px; }
+    .vid-top { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; }
+    .vid-bottom { display:flex; justify-content:space-between; align-items:flex-end; }
+    .status-pill { padding:4px 11px; border-radius:20px; font-size:0.76rem; font-weight:600; backdrop-filter:blur(4px); border:1px solid transparent; transition:all 0.3s; white-space:nowrap; }
+    .status-pill.good   { background:#23863688; color:var(--green);  border-color:#3fb95055; }
+    .status-pill.bad    { background:#da363333; color:var(--red);    border-color:#f8514955; animation:blink 1s step-end infinite; }
+    .status-pill.warn   { background:#9e6a0333; color:var(--yellow); border-color:#d2992255; }
+    .status-pill.info   { background:#1f6feb33; color:var(--blue);   border-color:#58a6ff55; }
+    @keyframes blink { 50%{opacity:0.6} }
+    .score-box { background:#000000aa; backdrop-filter:blur(4px); border-radius:10px; padding:5px 11px; text-align:center; border:1px solid var(--border); }
+    .score-num { font-size:1.8rem; font-weight:800; line-height:1; transition:color 0.3s; }
+    .score-lbl { font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+    .eye-box { background:#000000aa; backdrop-filter:blur(4px); border-radius:10px; padding:5px 10px; text-align:center; border:1px solid var(--border); min-width:60px; }
+    .eye-icon { font-size:1.3rem; line-height:1; }
+    .eye-lbl  { font-size:0.58rem; color:var(--muted); }
+    .ratio-wrap { background:#000000aa; backdrop-filter:blur(4px); border-radius:8px; padding:6px 10px; border:1px solid var(--border); display:none; }
+    .ratio-row { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:3px; }
+    .ratio-row:last-child { margin-bottom:0; }
+    .rlbl { font-size:0.63rem; color:var(--muted); white-space:nowrap; }
+    .rtrack { width:80px; height:5px; background:#ffffff20; border-radius:3px; overflow:hidden; flex-shrink:0; }
+    .rfill  { height:100%; border-radius:3px; transition:width 0.2s, background 0.3s; }
+    .rval   { font-size:0.63rem; font-family:monospace; color:var(--text); min-width:36px; text-align:right; }
+    .streak-badge { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:#000000aa; backdrop-filter:blur(4px); border:1px solid var(--red); border-radius:8px; padding:3px 10px; font-size:0.73rem; color:var(--red); display:none; white-space:nowrap; }
+    .streak-badge.show { display:block; }
+    #calibOverlay { position:absolute; inset:0; background:#000000cc; display:none; align-items:center; justify-content:center; flex-direction:column; gap:8px; color:#fff; font-weight:700; }
+    #calibOverlay.show { display:flex; }
+    .calib-count { font-size:5rem; font-weight:900; color:var(--green); line-height:1; }
+
+    /* ── Alert ── */
+    .alert-card { background:#da363315; border:1px solid var(--red); border-radius:10px; padding:10px 14px; color:var(--red); font-weight:600; text-align:center; font-size:0.86rem; display:none; }
+    .alert-card.show { display:block; animation:slideDown 0.25s ease; }
+    @keyframes slideDown { from{transform:translateY(-6px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+    /* ── Stats ── */
+    .stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
+    .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:11px; }
+    .stat-card.wide { grid-column:span 2; }
+    .stat-val { font-size:1.3rem; font-weight:700; }
+    .stat-lbl { font-size:0.67rem; color:var(--muted); margin-top:2px; }
+    .study-header { display:flex; justify-content:space-between; align-items:center; }
+    .desk-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--muted); margin-right:5px; transition:background 0.3s; }
+    .desk-dot.on { background:var(--green); animation:pdot 2s infinite; }
+    @keyframes pdot { 0%,100%{opacity:1}50%{opacity:0.4} }
+    .eye-stat { font-size:0.72rem; color:var(--muted); }
+
+    /* ── Buttons ── */
+    .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+    .btn { flex:1; min-width:88px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font-size:0.82rem; font-weight:600; cursor:pointer; transition:all 0.15s; }
+    .btn:hover { border-color:var(--blue); color:var(--blue); }
+    .btn:active { transform:scale(0.97); }
+    .btn:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+    .btn.green { border-color:var(--green); color:var(--green); }
+    .btn.green:hover { background:#1f4d2e; }
+    .btn.active { background:#1f4d2e; border-color:var(--green); color:var(--green); }
+
+    /* ── Slider ── */
+    .slider-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:11px 14px; }
+    .slider-hdr { display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:9px; }
+    .slider-hdr span:last-child { color:var(--green); font-weight:600; }
+    input[type=range] { width:100%; accent-color:var(--green); }
+    .slider-ticks { display:flex; justify-content:space-between; font-size:0.67rem; color:var(--muted); margin-top:3px; }
+
+    /* ── Timeline (bar chart) ── */
+    .timeline-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+    .tl-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:0.82rem; }
+    .tl-date   { color:var(--muted); font-size:0.72rem; }
+    #studyChart { display:block; width:100%; border-radius:4px; }
+    .tl-legend { display:flex; gap:12px; margin-top:6px; flex-wrap:wrap; }
+    .tl-leg-item { display:flex; align-items:center; gap:4px; font-size:0.68rem; color:var(--muted); }
+    .tl-leg-dot  { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+    /* Session list */
+    .sess-list { display:flex; flex-direction:column; gap:5px; max-height:130px; overflow-y:auto; margin-top:8px; }
+    .sess-item { display:flex; justify-content:space-between; align-items:center; padding:6px 9px; background:#ffffff07; border-radius:6px; font-size:0.78rem; }
+    .sess-time { color:var(--text); font-family:monospace; }
+    .sess-dur  { color:var(--muted); font-size:0.7rem; }
+    .sess-eye  { color:var(--blue); font-size:0.7rem; }
+    .sess-item.active .sess-time { color:var(--green); }
+
+
+    /* ── Debug ── */
+    .debug-row { background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:7px 10px; font-family:monospace; font-size:0.7rem; color:var(--muted); }
+
+    /* ── Loading screen ── */
+    #loadScreen { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; justify-content:center; align-items:center; gap:13px; z-index:999; }
+    .spinner { width:38px; height:38px; border:3px solid #ffffff15; border-top-color:var(--green); border-radius:50%; animation:spin 0.7s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    #loadScreen p { color:var(--muted); font-size:0.83rem; }
+
+    @media (max-width:420px) { .main{padding:9px;gap:9px} .stat-val{font-size:1.1rem} }
+  </style>
+</head>
+<body>
+
+<div id="loadScreen">
+  <div style="font-size:2.8rem">🐢</div>
+  <div class="spinner"></div>
+  <p id="loadMsg">AI 모델 로딩 중...</p>
+</div>
+
+<header>
+  <h1>🐢 거북목 · 공부 감지기</h1>
+  <div class="hdr-right">
+    <span class="fps" id="fpsBadge">-- fps</span>
+    <button class="btn" style="min-width:auto;padding:5px 9px;font-size:0.73rem" onclick="flipCamera()">📷 전환</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Video -->
+  <div class="video-wrap">
+    <video id="inputVideo" autoplay muted playsinline></video>
+    <canvas id="outputCanvas"></canvas>
+    <div class="vid-overlay">
+      <div class="vid-top">
+        <span class="status-pill info" id="statusPill">⏳ 초기화 중</span>
+        <div style="display:flex;gap:6px">
+          <div class="eye-box" id="eyeBox">
+            <div class="eye-icon" id="eyeIcon">👁️</div>
+            <div class="eye-lbl" id="eyeLbl">--</div>
+          </div>
+          <div class="score-box">
+            <div class="score-num" id="scoreNum" style="color:var(--muted)">--</div>
+            <div class="score-lbl">자세점수</div>
+          </div>
+        </div>
+      </div>
+      <div class="vid-bottom">
+        <div class="ratio-wrap" id="ratioWrap">
+          <div class="ratio-row">
+            <span class="rlbl">목 길이</span>
+            <div class="rtrack"><div class="rfill" id="neckFill" style="width:100%;background:var(--green)"></div></div>
+            <span class="rval" id="neckVal">--</span>
+          </div>
+          <div class="ratio-row">
+            <span class="rlbl">어깨 기울기</span>
+            <div class="rtrack"><div class="rfill" id="shFill" style="width:50%;background:var(--blue)"></div></div>
+            <span class="rval" id="shVal">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="streak-badge" id="streakBadge">⏱ <span id="streakSec">0</span>초째 나쁜 자세</div>
+    <div id="calibOverlay">
+      <div>바른 자세를 유지하세요</div>
+      <div class="calib-count" id="calibCount">3</div>
+      <div style="font-size:0.8rem;font-weight:400;color:var(--muted)" id="calibMsg">기준 측정 중...</div>
+    </div>
+  </div>
+
+  <!-- Alert -->
+  <div class="alert-card" id="alertCard">⚠️ 자세 이상 감지!</div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card wide">
+      <div class="study-header">
+        <div>
+          <div class="stat-val" id="studyTime" style="color:var(--blue)">0:00</div>
+          <div class="stat-lbl"><span class="desk-dot" id="deskDot"></span>📚 공부 시간 (눈 뜬 시간)</div>
+        </div>
+        <div style="text-align:right">
+          <div class="eye-stat" id="eyeStatLabel">눈 감지 대기중</div>
+          <div class="eye-stat" id="sessionLabel" style="margin-top:2px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="goodTime" style="color:var(--green)">0:00</div>
+      <div class="stat-lbl">✅ 좋은 자세</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="badTime" style="color:var(--red)">0:00</div>
+      <div class="stat-lbl">⚠️ 거북목/어깨</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="badPct">0%</div>
+      <div class="stat-lbl">거북목 비율</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="studyPct" style="color:var(--blue)">0%</div>
+      <div class="stat-lbl">자세 유지율</div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-card">
+    <div class="tl-header">
+      <span>📅 오늘의 공부 타임라인</span>
+      <span class="tl-date" id="tlDate"></span>
+    </div>
+    <canvas id="studyChart" height="110"></canvas>
+    <div class="tl-legend">
+      <div class="tl-leg-item"><div class="tl-leg-dot" style="background:#3fb950"></div>좋은 자세</div>
+      <div class="tl-leg-item"><div class="tl-leg-dot" style="background:#f85149"></div>거북목·어깨</div>
+      <div class="tl-leg-item"><div class="tl-leg-dot" style="background:#555e6b"></div>눈 감음</div>
+      <div class="tl-leg-item"><div class="tl-leg-dot" style="background:#58a6ff"></div>진행중</div>
+    </div>
+    <div class="sess-list" id="sessList"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="btn-row">
+    <button class="btn green" id="calibBtn" onclick="startCalibration()">📐 기준 자세 설정</button>
+    <button class="btn" id="audioBtn" onclick="toggleAudio()">🔇 알림음</button>
+    <button class="btn" onclick="resetStats()">🔄 초기화</button>
+  </div>
+
+  <!-- Sensitivity -->
+  <div class="slider-card">
+    <div class="slider-hdr">
+      <span>🎚️ 감지 민감도</span>
+      <span id="sensLabel">보통 (15%)</span>
+    </div>
+    <input type="range" id="sensSlider" min="5" max="30" value="15" step="1"
+           oninput="setSensitivity(+this.value)">
+    <div class="slider-ticks"><span>관대</span><span>보통</span><span>엄격</span></div>
+  </div>
+
+
+  <div class="debug-row" id="debugRow">🔍 초기화 중...</div>
+
+</div><!-- /main -->
+
+<!-- MediaPipe scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+'use strict';
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const videoEl  = document.getElementById('inputVideo');
+const canvasEl = document.getElementById('outputCanvas');
+const ctx2d    = canvasEl.getContext('2d');
+
+// ── Posture state ─────────────────────────────────────────────────────────────
+let baseline       = null;
+let sensitivity    = 0.15;
+let audioEnabled   = false;
+let audioCtx       = null;
+let facingMode     = 'user';
+let camObj         = null;
+
+let isCurrentlyBad = false;
+let badStartMs     = 0;
+let totalBadMs     = 0;
+let totalGoodMs    = 0;
+let lastTickMs     = 0;
+let lastAlertMs    = 0;
+const ALERT_COOL   = 30_000;
+
+const SMOOTH_N    = 10;
+const neckBuf     = [];
+const shAngleBuf  = [];
+const SH_WARN_DEG = 6;
+const SH_BAD_DEG  = 10;
+let isShoulderBad = false;
+
+// ── Eye state (FaceMesh EAR) ──────────────────────────────────────────────────
+const L_EYE = [33, 160, 158, 133, 153, 144];
+const R_EYE = [362, 385, 387, 263, 373, 380];
+const EAR_THRESH    = 0.22;
+const EYE_PAUSE_MS  = 2000;   // eyes closed this long → pause study timer
+let eyesOpen        = true;
+let eyesClosedSince = 0;
+let totalEyeClosedMs = 0;
+let faceDetected    = false;
+
+// ── Presence / study time ─────────────────────────────────────────────────────
+let lastSeenMs    = 0;
+let totalStudyMs  = 0;
+let isAtDesk      = false;
+const AWAY_THRESH = 5_000;
+
+// ── Session management (in-memory only) ──────────────────────────────────────
+const TODAY = new Date().toISOString().slice(0, 10);
+
+// Session: { start, end, studyMs, eyeClosedMs, goodMs, badMs }
+let sessions   = [];
+let curSession = null;
+
+function sessionBegin(now) {
+  curSession = { start: now, end: null, studyMs: 0, eyeClosedMs: 0, goodMs: 0, badMs: 0 };
+  sessions.push(curSession);
+  renderChart();
+}
+
+function sessionClose(now) {
+  if (!curSession) return;
+  curSession.end = now;
+  curSession = null;
+  renderChart();
+}
+
+// ── FPS ───────────────────────────────────────────────────────────────────────
+let fpsCount = 0;
+let fpsTs    = 0;
+
+
+// ── MediaPipe: Pose ───────────────────────────────────────────────────────────
+const pose = new Pose({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
+});
+pose.setOptions({ modelComplexity:1, smoothLandmarks:true, enableSegmentation:false, minDetectionConfidence:0.6, minTrackingConfidence:0.5 });
+pose.onResults(onPoseResults);
+
+// ── MediaPipe: FaceMesh ───────────────────────────────────────────────────────
+const faceMesh = new FaceMesh({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+});
+faceMesh.setOptions({ maxNumFaces:1, refineLandmarks:false, minDetectionConfidence:0.5, minTrackingConfidence:0.5 });
+faceMesh.onResults(onFaceResults);
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+async function startCamera() {
+  if (camObj) { try { camObj.stop(); } catch(_) {} }
+  document.getElementById('loadScreen').style.display = 'flex';
+  document.getElementById('loadMsg').textContent = 'AI 모델 로딩 중...';
+  let frameIdx = 0;
+  camObj = new Camera(videoEl, {
+    onFrame: async () => {
+      // Alternate models every frame to reduce CPU load
+      frameIdx++;
+      if (frameIdx % 2 === 0) {
+        await pose.send({ image: videoEl });
+      } else {
+        await faceMesh.send({ image: videoEl });
+      }
+    },
+    width: 640, height: 480, facingMode
+  });
+  try {
+    await camObj.start();
+    document.getElementById('loadScreen').style.display = 'none';
+  } catch(e) {
+    document.getElementById('loadScreen').innerHTML =
+      `<div style="font-size:2rem">❌</div>
+       <p style="color:var(--red)">카메라 오류: ${e.message}</p>
+       <p style="font-size:0.75rem;color:var(--muted);text-align:center;padding:0 20px">
+         브라우저에서 카메라 권한을 허용한 뒤 새로고침하세요.
+       </p>`;
+  }
+}
+
+function flipCamera() {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  startCamera();
+}
+
+// ── EAR (Eye Aspect Ratio) ────────────────────────────────────────────────────
+function d2(a, b) { return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+
+function calcEAR(fl, idx) {
+  const [p1,p2,p3,p4,p5,p6] = idx.map(i => fl[i]);
+  return (d2(p2,p6) + d2(p3,p5)) / (2 * d2(p1,p4));
+}
+
+// ── FaceMesh results ──────────────────────────────────────────────────────────
+function onFaceResults(results) {
+  const now = Date.now();
+  if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+    faceDetected = false;
+    return;
+  }
+  faceDetected = true;
+  const fl   = results.multiFaceLandmarks[0];
+  const lEAR = calcEAR(fl, L_EYE);
+  const rEAR = calcEAR(fl, R_EYE);
+  const ear  = (lEAR + rEAR) / 2;
+
+  const eyeEl   = document.getElementById('eyeIcon');
+  const eyeLbl  = document.getElementById('eyeLbl');
+  const eyeStat = document.getElementById('eyeStatLabel');
+
+  if (ear < EAR_THRESH) {
+    // Eyes appear closed
+    if (eyesOpen) eyesClosedSince = now;
+    eyesOpen = false;
+
+    const closedMs = now - eyesClosedSince;
+    const closedSec = Math.floor(closedMs / 1000);
+    eyeEl.textContent  = closedMs > 3000 ? '😴' : '😑';
+    eyeLbl.textContent = `${ear.toFixed(2)}`;
+    eyeStat.textContent = closedMs > 3000 ? `😴 졸음 감지 (${closedSec}초)` : '눈 감음 중';
+    eyeStat.style.color = closedMs > 3000 ? 'var(--red)' : 'var(--yellow)';
+    if (curSession) curSession.eyeClosedMs = (curSession.eyeClosedMs || 0) + 16; // approx 60fps
+  } else {
+    // Eyes open — log closed duration
+    if (!eyesOpen) {
+      const dur = now - eyesClosedSince;
+      if (dur > 500) totalEyeClosedMs += dur; // ignore blinks < 500ms
+    }
+    eyesOpen = true;
+    eyeEl.textContent  = '👁️';
+    eyeLbl.textContent = `${ear.toFixed(2)}`;
+    eyeStat.textContent = `EAR ${ear.toFixed(2)}`;
+    eyeStat.style.color = 'var(--muted)';
+  }
+}
+
+// ── Pose metrics ──────────────────────────────────────────────────────────────
+function extractMetrics(lms) {
+  const lEar=lms[7], rEar=lms[8], lSh=lms[11], rSh=lms[12], nose=lms[0];
+  // 0.3으로 완화 — 귀 랜드마크는 헤어스타일/조명에 따라 신뢰도가 낮을 수 있음
+  const vis = Math.min(lSh.visibility, rSh.visibility,
+                       Math.max(lEar.visibility, rEar.visibility)); // 귀는 양쪽 중 하나라도 보이면 OK
+  if (vis < 0.3) return null;
+  const shW = Math.abs(lSh.x - rSh.x);
+  if (shW < 0.05) return null;
+  const earY = (lEar.y + rEar.y) / 2;
+  const shY  = (lSh.y  + rSh.y)  / 2;
+  const neckRatio  = (shY - earY) / shW;
+  const shAngleDeg = Math.atan2(lSh.y - rSh.y, lSh.x - rSh.x) * 180 / Math.PI;
+  return { neckRatio, shAngleDeg, shW, vis };
+}
+
+function smooth(buf, val) {
+  buf.push(val);
+  if (buf.length > SMOOTH_N) buf.shift();
+  return buf.reduce((a,b)=>a+b,0)/buf.length;
+}
+
+// ── Pose results ──────────────────────────────────────────────────────────────
+function onPoseResults(results) {
+  // FPS
+  fpsCount++;
+  const now = Date.now();
+  if (now - fpsTs >= 1000) {
+    document.getElementById('fpsBadge').textContent = `${fpsCount} fps`;
+    fpsCount = 0; fpsTs = now;
+  }
+
+  canvasEl.width  = results.image.width;
+  canvasEl.height = results.image.height;
+  ctx2d.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+  if (!results.poseLandmarks) {
+    if (!lastSeenMs || now - lastSeenMs >= AWAY_THRESH)
+      setStatus('warn', '👀 얼굴·어깨를 화면에 보여주세요');
+    return;
+  }
+
+  const lms = results.poseLandmarks;
+
+  // ── Presence / study time ──
+  const studyDelta = lastSeenMs ? Math.min(now - lastSeenMs, AWAY_THRESH) : 0;
+  const wasAway    = studyDelta >= AWAY_THRESH || !lastSeenMs;
+
+  if (wasAway) {
+    // Just arrived at desk
+    if (!isAtDesk) {
+      isAtDesk = true;
+      document.getElementById('deskDot').classList.add('on');
+      sessionBegin(now);
+    }
+  }
+
+  // Accumulate study time only when eyes open
+  if (studyDelta > 0 && studyDelta < AWAY_THRESH) {
+    const eyesPauseActive = !eyesOpen && (now - eyesClosedSince) > EYE_PAUSE_MS;
+    if (!eyesPauseActive) {
+      totalStudyMs += studyDelta;
+      if (curSession) curSession.studyMs = (curSession.studyMs || 0) + studyDelta;
+    }
+  }
+  lastSeenMs = now;
+
+  // ── Draw skeleton ──
+  drawConnectors(ctx2d, lms, POSE_CONNECTIONS, {
+    color: isCurrentlyBad ? '#f8514940' : '#3fb95040', lineWidth: 2
+  });
+
+  // Key points
+  [[0,'#58a6ff'],[7,'#58a6ff'],[8,'#58a6ff'],[11,'#fbbf24'],[12,'#fbbf24']].forEach(([i,c]) => {
+    const l = lms[i];
+    if (l.visibility < 0.5) return;
+    ctx2d.beginPath();
+    ctx2d.arc(l.x*canvasEl.width, l.y*canvasEl.height, 5, 0, Math.PI*2);
+    ctx2d.fillStyle = c; ctx2d.fill();
+  });
+
+  // Neck line + shoulder line
+  const [lE,rE,lS,rS] = [lms[7],lms[8],lms[11],lms[12]];
+  if ([lE,rE,lS,rS].every(l=>l.visibility>0.5)) {
+    const ex=((lE.x+rE.x)/2)*canvasEl.width, ey=((lE.y+rE.y)/2)*canvasEl.height;
+    const sx=((lS.x+rS.x)/2)*canvasEl.width, sy=((lS.y+rS.y)/2)*canvasEl.height;
+    // Neck
+    ctx2d.beginPath(); ctx2d.moveTo(sx,sy); ctx2d.lineTo(ex,ey);
+    ctx2d.strokeStyle = isCurrentlyBad ? '#f85149' : '#3fb950';
+    ctx2d.lineWidth = 3; ctx2d.stroke();
+    // Shoulder
+    const curAngle = shAngleBuf.length ? shAngleBuf.reduce((a,b)=>a+b)/shAngleBuf.length : 0;
+    const shCol = isShoulderBad ? '#f85149' : Math.abs(curAngle)>=SH_WARN_DEG ? '#d29922' : '#58a6ff';
+    ctx2d.beginPath();
+    ctx2d.moveTo(lS.x*canvasEl.width, lS.y*canvasEl.height);
+    ctx2d.lineTo(rS.x*canvasEl.width, rS.y*canvasEl.height);
+    ctx2d.strokeStyle = shCol; ctx2d.lineWidth = 3; ctx2d.stroke();
+    // Angle label
+    if (Math.abs(curAngle) > 1) {
+      ctx2d.fillStyle='#ffffffaa'; ctx2d.font='bold 11px monospace';
+      ctx2d.fillText(`${curAngle>0?'↙':'↘'} ${Math.abs(curAngle).toFixed(1)}°`, sx+6, sy-6);
+    }
+  }
+
+  // ── Metrics ──
+  const m = extractMetrics(lms);
+  if (!m) { setStatus('warn', '👀 어깨가 더 보이도록 카메라를 조정하세요'); return; }
+
+  const smNeck  = smooth(neckBuf, m.neckRatio);
+  const smAngle = smooth(shAngleBuf, m.shAngleDeg);
+  const absAngle = Math.abs(smAngle);
+
+  // Shoulder display
+  isShoulderBad = absAngle >= SH_BAD_DEG;
+  const shColor = isShoulderBad?'var(--red)':absAngle>=SH_WARN_DEG?'var(--yellow)':'var(--blue)';
+  const shPct   = Math.max(0, Math.min(100, 50 + (smAngle / SH_BAD_DEG)*50));
+  setEl('shFill', el => { el.style.width=`${shPct}%`; el.style.background=shColor; });
+  setEl('shVal', el => {
+    el.textContent = absAngle<1 ? '수평' : `${smAngle>0?'좌':'우'} ${absAngle.toFixed(1)}°`;
+    el.style.color = shColor;
+  });
+
+  dbg(`neck:${smNeck.toFixed(3)} sh:${smAngle.toFixed(1)}° ear:${faceDetected?'감지':'없음'} eyes:${eyesOpen?'열림':'닫힘'}`);
+
+  if (isCalibrating) {
+    calibFrames.push(m.neckRatio);
+    setEl('calibMsg', el => el.textContent = `측정 중... (${calibFrames.length}프레임)`);
+    return;
+  }
+
+  if (!baseline) { setStatus('info', '📐 [기준 자세 설정] 버튼을 눌러주세요'); return; }
+
+  // Show ratio bar
+  document.getElementById('ratioWrap').style.display = '';
+  const neckRatio = smNeck / baseline.neckRatio;
+  const neckColor = neckRatio>=0.85?'var(--green)':neckRatio>=0.70?'var(--yellow)':'var(--red)';
+  setEl('neckFill', el=>{el.style.width=`${Math.max(0,Math.min(100,neckRatio*100))}%`;el.style.background=neckColor;});
+  setEl('neckVal', el=>{el.textContent=`${(neckRatio*100).toFixed(0)}%`;el.style.color=neckColor;});
+
+  const neckDev   = (baseline.neckRatio - smNeck) / baseline.neckRatio;
+  const neckScore = Math.max(0, Math.min(100, (1 - neckDev/sensitivity)*100));
+  const shScore   = Math.max(0, Math.min(100, 100 - (absAngle/SH_BAD_DEG)*40));
+  const score     = Math.round(neckScore*0.7 + shScore*0.3);
+
+  updateScore(score);
+  tick(neckDev >= sensitivity, isShoulderBad, smAngle, now);
+}
+
+// ── Posture tick ──────────────────────────────────────────────────────────────
+function tick(isNeckBad, isShBad, shAngle, now) {
+  const isBad = isNeckBad || isShBad;
+  const delta = lastTickMs ? now - lastTickMs : 0;
+  lastTickMs = now;
+
+  if (isBad) {
+    totalBadMs += delta;
+    if (curSession) curSession.badMs = (curSession.badMs||0) + delta;
+    if (!isCurrentlyBad) {
+      isCurrentlyBad = true;
+      badStartMs = now;
+      const al = document.getElementById('alertCard');
+      al.textContent = isNeckBad && isShBad
+        ? '⚠️ 거북목 + 어깨 기울기 감지! 자세를 바르게 해주세요.'
+        : isNeckBad
+        ? '⚠️ 거북목 자세 감지됨! 목을 바르게 펴주세요.'
+        : `⚠️ ${shAngle>0?'왼쪽':'오른쪽'} 어깨 기울기 ${Math.abs(shAngle).toFixed(1)}° 감지!`;
+      al.classList.add('show');
+    }
+    if (audioEnabled && now - lastAlertMs > ALERT_COOL) { lastAlertMs = now; beep(); }
+    document.getElementById('streakSec').textContent = Math.floor((now-badStartMs)/1000);
+    document.getElementById('streakBadge').classList.add('show');
+    setStatus('bad', isNeckBad&&isShBad ? '⚠️ 거북목+어깨' : isNeckBad ? '⚠️ 거북목' : `⚠️ 어깨 ${Math.abs(shAngle).toFixed(1)}°`);
+  } else {
+    totalGoodMs += delta;
+    if (curSession) curSession.goodMs = (curSession.goodMs||0) + delta;
+    if (isCurrentlyBad) {
+      isCurrentlyBad = false;
+      document.getElementById('alertCard').classList.remove('show');
+      document.getElementById('streakBadge').classList.remove('show');
+    }
+    setStatus('good', '✅ 좋은 자세');
+  }
+  refreshStats();
+}
+
+// ── Away detector (1s interval) ───────────────────────────────────────────────
+setInterval(() => {
+  const now = Date.now();
+  if (lastSeenMs && now - lastSeenMs > AWAY_THRESH && isAtDesk) {
+    isAtDesk = false;
+    document.getElementById('deskDot').classList.remove('on');
+    sessionClose(lastSeenMs + AWAY_THRESH);
+    setStatus('warn', '💤 자리 비움 — 감지 대기 중');
+    setEl('sessionLabel', el => el.textContent = '');
+  }
+  if (curSession) {
+    renderChart();  // keep active bar updated
+    const sessMs = now - curSession.start;
+    setEl('sessionLabel', el => el.textContent = `현재 세션 ${fmtMs(sessMs)}`);
+  }
+  refreshStats();
+}, 1000);
+
+// ── Calibration ───────────────────────────────────────────────────────────────
+let isCalibrating = false;
+let calibFrames   = [];
+let calibCountdown = 3;
+let calibTimer    = null;
+
+function startCalibration() {
+  if (isCalibrating) return;
+  isCalibrating = true;
+  calibFrames   = [];
+  calibCountdown = 3;
+  neckBuf.length = shAngleBuf.length = 0;
+  document.getElementById('calibBtn').disabled = true;
+  document.getElementById('calibCount').textContent = 3;
+  document.getElementById('calibOverlay').classList.add('show');
+  calibTimer = setInterval(() => {
+    calibCountdown--;
+    document.getElementById('calibCount').textContent = Math.max(0, calibCountdown);
+    if (calibCountdown <= 0) { clearInterval(calibTimer); finishCalibration(); }
+  }, 1000);
+}
+
+function finishCalibration() {
+  isCalibrating = false;
+  document.getElementById('calibOverlay').classList.remove('show');
+  document.getElementById('calibBtn').disabled = false;
+  if (calibFrames.length < 5) { setStatus('warn', '측정 실패 — 얼굴·어깨 보이게 한 뒤 재시도'); return; }
+  const avg = calibFrames.reduce((a,b)=>a+b)/calibFrames.length;
+  baseline = { neckRatio: avg };
+  setStatus('good', `✅ 기준 설정 완료 (비율: ${avg.toFixed(3)})`);
+  setTimeout(() => { if (!isCurrentlyBad) setStatus('good','✅ 좋은 자세'); }, 2500);
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setStatus(type, msg) {
+  const el = document.getElementById('statusPill');
+  el.className = `status-pill ${type}`;
+  el.textContent = msg;
+}
+function setEl(id, fn) { const el = document.getElementById(id); if (el) fn(el); }
+function updateScore(s) {
+  setEl('scoreNum', el => {
+    el.textContent = s;
+    el.style.color = s>=80?'var(--green)':s>=50?'var(--yellow)':'var(--red)';
+  });
+}
+function fmtMs(ms) {
+  const s = Math.floor(ms/1000);
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+function fmtTime(ms) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function dbg(msg) { setEl('debugRow', el => el.textContent = '🔍 '+msg); }
+
+function refreshStats() {
+  setEl('studyTime', el => el.textContent = fmtMs(totalStudyMs));
+  setEl('goodTime',  el => el.textContent = fmtMs(totalGoodMs));
+  setEl('badTime',   el => el.textContent = fmtMs(totalBadMs));
+  const postureTotal = totalGoodMs + totalBadMs;
+  const badPct = postureTotal>0 ? Math.round(totalBadMs/postureTotal*100) : 0;
+  setEl('badPct', el => { el.textContent=`${badPct}%`; el.style.color=badPct>30?'var(--red)':'var(--green)'; });
+  const sp = totalStudyMs>0 ? Math.round(totalGoodMs/totalStudyMs*100) : 0;
+  setEl('studyPct', el => { el.textContent=`${sp}%`; el.style.color=sp>=70?'var(--green)':sp>=50?'var(--yellow)':'var(--red)'; });
+}
+
+function resetStats() {
+  totalBadMs = totalGoodMs = totalStudyMs = totalEyeClosedMs = 0;
+  lastTickMs = lastSeenMs = 0;
+  sessions = []; curSession = null;
+  renderChart();
+  renderSessionList();
+  refreshStats();
+}
+
+// ── Timeline rendering ────────────────────────────────────────────────────────
+function buildBuckets() {
+  const now = Date.now();
+  const d = new Date(); d.setHours(0,0,0,0);
+  const dayStart = d.getTime();
+  const bucketMs = 30 * 60000;
+  const numBuckets = Math.max(Math.ceil((now - dayStart) / bucketMs) + 1, 1);
+  const buckets = Array.from({length: numBuckets}, () => ({good:0, bad:0, eye:0}));
+  sessions.forEach(s => {
+    const sEnd = s.end || now;
+    const dur = sEnd - s.start;
+    if (dur <= 0) return;
+    const goodRate = (s.goodMs||0)/dur, badRate = (s.badMs||0)/dur, eyeRate = (s.eyeClosedMs||0)/dur;
+    let t = s.start;
+    while (t < sEnd) {
+      const bIdx = Math.floor((t - dayStart) / bucketMs);
+      if (bIdx < 0 || bIdx >= numBuckets) { t += bucketMs; continue; }
+      const bucketEnd = dayStart + (bIdx+1)*bucketMs;
+      const sliceEnd = Math.min(sEnd, bucketEnd);
+      const sliceMs = sliceEnd - t;
+      buckets[bIdx].good += sliceMs * goodRate;
+      buckets[bIdx].bad  += sliceMs * badRate;
+      buckets[bIdx].eye  += sliceMs * eyeRate;
+      t = sliceEnd;
+    }
+  });
+  return { buckets, dayStart, bucketMs, numBuckets };
+}
+
+function renderChart() {
+  const canvas = document.getElementById('studyChart');
+  if (!canvas) return;
+  const parent = canvas.parentElement;
+  const W = (parent ? parent.clientWidth - 28 : 300);
+  const H_CHART = 80, H_LABEL = 20;
+  canvas.width = W; canvas.height = H_CHART + H_LABEL;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H_CHART + H_LABEL);
+
+  const { buckets, dayStart, bucketMs, numBuckets } = buildBuckets();
+  const maxVal = Math.max(...buckets.map(b => b.good+b.bad+b.eye), 60000); // min 1분
+  const barW = W / numBuckets;
+
+  // Draw stacked bars
+  buckets.forEach((b, i) => {
+    let y = H_CHART;
+    [[b.eye,'#555e6b'],[b.bad,'#f85149'],[b.good,'#3fb950']].forEach(([val,col]) => {
+      const h = (val/maxVal)*H_CHART;
+      if (h < 0.5) return;
+      y -= h;
+      ctx.fillStyle = col;
+      ctx.fillRect(i*barW+1, y, barW-2, h);
+    });
+  });
+
+  // Y-axis gridlines + labels
+  [0.25, 0.5, 0.75, 1.0].forEach(pct => {
+    const y = H_CHART*(1-pct);
+    ctx.strokeStyle='#ffffff15'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='9px monospace'; ctx.textAlign='left';
+    ctx.fillText(`${Math.round(maxVal/60000*pct)}분`, 2, y+9);
+  });
+
+  // X-axis hour labels
+  const now = Date.now();
+  for (let h = 0; h <= 24; h += 2) {
+    const t = dayStart + h*3600000;
+    if (t > now + 3600000) break;
+    const x = (t - dayStart) / bucketMs * barW;
+    if (x < 0 || x > W) continue;
+    ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`${h}시`, x, H_CHART+H_LABEL-3);
+  }
+
+  // Now-line
+  const nowX = Math.min((now - dayStart) / bucketMs * barW, W-1);
+  ctx.strokeStyle='#f85149'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(nowX,0); ctx.lineTo(nowX,H_CHART); ctx.stroke();
+  ctx.fillStyle='#f85149'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('지금', nowX, 10);
+
+  renderSessionList();
+}
+
+function renderSessionList() {
+  const list = document.getElementById('sessList');
+  if (!list) return;
+  const now = Date.now();
+  list.innerHTML = '';
+  if (sessions.length === 0) return;
+
+  [...sessions].reverse().forEach((s, i) => {
+    const isActive = !s.end;
+    const sEnd = s.end || now;
+    const dur  = sEnd - s.start;
+    const eyePct = dur > 0 ? Math.round(((s.studyMs||0)/dur)*100) : 0;
+    const item = document.createElement('div');
+    item.className = `sess-item${isActive?' active':''}`;
+    item.innerHTML = `
+      <span class="sess-time">${fmtTime(s.start)} ~ ${isActive?'진행중':fmtTime(sEnd)}</span>
+      <span class="sess-dur">${fmtMs(dur)}</span>
+      <span class="sess-eye">👁 ${eyePct}%</span>`;
+    list.appendChild(item);
+  });
+}
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+function toggleAudio() {
+  audioEnabled = !audioEnabled;
+  if (audioEnabled && !audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  setEl('audioBtn', el => { el.textContent=audioEnabled?'🔊 알림음 ON':'🔇 알림음'; el.classList.toggle('active', audioEnabled); });
+}
+function beep() {
+  if (!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.setValueAtTime(880,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(440,audioCtx.currentTime+0.25);
+  g.gain.setValueAtTime(0.25,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.25);
+  o.start(); o.stop(audioCtx.currentTime+0.26);
+}
+
+// ── Sensitivity ───────────────────────────────────────────────────────────────
+function setSensitivity(val) {
+  sensitivity = val/100;
+  const lbl = val<=8?'관대':val<=15?'보통':val<=22?'엄격':'매우 엄격';
+  setEl('sensLabel', el => el.textContent=`${lbl} (${val}%)`);
+}
+
+
+// ── Sample data (injected if no real sessions today) ─────────────────────────
+function makeSampleSession(h1, m1, h2, m2, goodR, badR, eyeR) {
+  const d = new Date(); d.setHours(0,0,0,0);
+  const base   = d.getTime();
+  const start  = base + (h1*60+m1)*60000;
+  const end    = base + (h2*60+m2)*60000;
+  const dur    = end - start;
+  return {
+    start,
+    end,
+    studyMs:     Math.round(dur * (goodR + badR)),
+    goodMs:      Math.round(dur * goodR),
+    badMs:       Math.round(dur * badR),
+    eyeClosedMs: Math.round(dur * eyeR),
+    isSample:    true
+  };
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+// 샘플 데이터: 오늘 기준 이미 지난 시간대에 공부 기록을 시뮬레이션
+(function initSampleData() {
+  const now = Date.now();
+  [
+    makeSampleSession( 9,  0,  9, 47, 0.72, 0.18, 0.10),  // 09:00 ~ 09:47
+    makeSampleSession(10, 20, 11, 38, 0.58, 0.32, 0.10),  // 10:20 ~ 11:38
+    makeSampleSession(13,  5, 14, 25, 0.78, 0.14, 0.08),  // 13:05 ~ 14:25
+  ].filter(s => s.end < now - 5*60000)   // 현재보다 5분 이상 이전만
+   .forEach(s => sessions.push(s));
+})();
+
+try { Notification.requestPermission(); } catch(_) {}
+renderChart();
+setEl('tlDate', el => el.textContent = TODAY);
+startCamera();
+</script>
+</body>
+</html>
