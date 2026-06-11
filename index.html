@@ -103,6 +103,14 @@
     .sess-item.active .sess-time { color:var(--green); }
 
 
+    /* ── QR Code ── */
+    .qr-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:14px; }
+    .qr-img  { width:90px; height:90px; border-radius:6px; flex-shrink:0; }
+    .qr-info { display:flex; flex-direction:column; gap:4px; }
+    .qr-title { font-size:0.85rem; font-weight:600; }
+    .qr-desc  { font-size:0.72rem; color:var(--muted); line-height:1.4; }
+    .qr-url   { font-size:0.68rem; color:var(--blue); font-family:monospace; margin-top:2px; }
+
     /* ── Debug ── */
     .debug-row { background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:7px 10px; font-family:monospace; font-size:0.7rem; color:var(--muted); }
 
@@ -212,7 +220,7 @@
   <!-- Timeline -->
   <div class="timeline-card">
     <div class="tl-header">
-      <span>📅 오늘의 공부 타임라인</span>
+      <span>📅 최근 12시간 공부 타임라인</span>
       <span class="tl-date" id="tlDate"></span>
     </div>
     <canvas id="studyChart" height="110"></canvas>
@@ -223,6 +231,18 @@
       <div class="tl-leg-item"><div class="tl-leg-dot" style="background:#58a6ff"></div>진행중</div>
     </div>
     <div class="sess-list" id="sessList"></div>
+  </div>
+
+  <!-- QR Code -->
+  <div class="qr-card">
+    <img class="qr-img" alt="QR"
+         src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https%3A%2F%2Fpolar97.github.io%2FTurtleNeck"
+         onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src='https://quickchart.io/qr?size=180&text=https%3A%2F%2Fpolar97.github.io%2FTurtleNeck';}">
+    <div class="qr-info">
+      <div class="qr-title">📱 스마트폰으로 직접 테스트</div>
+      <div class="qr-desc">QR코드를 스캔하면 이 앱을<br>스마트폰 카메라로 바로 사용할 수 있습니다.</div>
+      <div class="qr-url">polar97.github.io/TurtleNeck</div>
+    </div>
   </div>
 
   <!-- Controls -->
@@ -293,6 +313,7 @@ const EYE_PAUSE_MS  = 2000;   // eyes closed this long → pause study timer
 let eyesOpen        = true;
 let eyesClosedSince = 0;
 let totalEyeClosedMs = 0;
+let lastFaceMs      = 0;      // [FIX#3] 눈감음 누적용 실측 경과시간 기준
 let faceDetected    = false;
 
 // ── Presence / study time ─────────────────────────────────────────────────────
@@ -302,7 +323,10 @@ let isAtDesk      = false;
 const AWAY_THRESH = 5_000;
 
 // ── Session management (in-memory only) ──────────────────────────────────────
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = (() => {           // [FIX] toISOString()은 UTC라 날짜가 하루 어긋남 → 로컬 날짜 사용
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+})();
 
 // Session: { start, end, studyMs, eyeClosedMs, goodMs, badMs }
 let sessions   = [];
@@ -387,6 +411,9 @@ function calcEAR(fl, idx) {
 // ── FaceMesh results ──────────────────────────────────────────────────────────
 function onFaceResults(results) {
   const now = Date.now();
+  fpsCount++;                                                            // [FIX#1] face 프레임도 카운트 → 실제 fps 표시
+  const faceDelta = lastFaceMs ? Math.min(now - lastFaceMs, 1000) : 0;   // [FIX#3] 실측 경과시간(최대 1s 캡)
+  lastFaceMs = now;
   if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
     faceDetected = false;
     return;
@@ -412,7 +439,7 @@ function onFaceResults(results) {
     eyeLbl.textContent = `${ear.toFixed(2)}`;
     eyeStat.textContent = closedMs > 3000 ? `😴 졸음 감지 (${closedSec}초)` : '눈 감음 중';
     eyeStat.style.color = closedMs > 3000 ? 'var(--red)' : 'var(--yellow)';
-    if (curSession) curSession.eyeClosedMs = (curSession.eyeClosedMs || 0) + 16; // approx 60fps
+    if (curSession) curSession.eyeClosedMs = (curSession.eyeClosedMs || 0) + faceDelta; // [FIX#3] 실측 경과시간 누적
   } else {
     // Eyes open — log closed duration
     if (!eyesOpen) {
@@ -433,7 +460,7 @@ function extractMetrics(lms) {
   // 0.3으로 완화 — 귀 랜드마크는 헤어스타일/조명에 따라 신뢰도가 낮을 수 있음
   const vis = Math.min(lSh.visibility, rSh.visibility,
                        Math.max(lEar.visibility, rEar.visibility)); // 귀는 양쪽 중 하나라도 보이면 OK
-  if (vis < 0.3) return null;
+  if (vis < 0.2) return null;
   const shW = Math.abs(lSh.x - rSh.x);
   if (shW < 0.05) return null;
   const earY = (lEar.y + rEar.y) / 2;
@@ -656,7 +683,7 @@ function finishCalibration() {
   isCalibrating = false;
   document.getElementById('calibOverlay').classList.remove('show');
   document.getElementById('calibBtn').disabled = false;
-  if (calibFrames.length < 5) { setStatus('warn', '측정 실패 — 얼굴·어깨 보이게 한 뒤 재시도'); return; }
+  if (calibFrames.length < 3) { setStatus('warn', '측정 실패 — 얼굴·어깨 보이게 한 뒤 재시도'); return; }
   const avg = calibFrames.reduce((a,b)=>a+b)/calibFrames.length;
   baseline = { neckRatio: avg };
   setStatus('good', `✅ 기준 설정 완료 (비율: ${avg.toFixed(3)})`);
@@ -707,24 +734,27 @@ function resetStats() {
 }
 
 // ── Timeline rendering ────────────────────────────────────────────────────────
+const WINDOW_MS = 12 * 3600000;   // [FIX] 타임라인 표시 범위 = 과거 12시간(롤링)
 function buildBuckets() {
-  const now = Date.now();
-  const d = new Date(); d.setHours(0,0,0,0);
-  const dayStart = d.getTime();
-  const bucketMs = 30 * 60000;
-  const numBuckets = Math.max(Math.ceil((now - dayStart) / bucketMs) + 1, 1);
+  const now      = Date.now();
+  const bucketMs = 30 * 60000;    // 30분 단위 → 24칸
+  const winEnd   = now;
+  const winStart = winEnd - WINDOW_MS;
+  const numBuckets = Math.round(WINDOW_MS / bucketMs);
   const buckets = Array.from({length: numBuckets}, () => ({good:0, bad:0, eye:0}));
   sessions.forEach(s => {
     const sEnd = s.end || now;
-    const dur = sEnd - s.start;
+    const dur  = sEnd - s.start;
     if (dur <= 0) return;
     const goodRate = (s.goodMs||0)/dur, badRate = (s.badMs||0)/dur, eyeRate = (s.eyeClosedMs||0)/dur;
-    let t = s.start;
-    while (t < sEnd) {
-      const bIdx = Math.floor((t - dayStart) / bucketMs);
+    // 12시간 윈도우와 겹치는 구간만 버킷에 분배
+    let t = Math.max(s.start, winStart);
+    const segEnd = Math.min(sEnd, winEnd);
+    while (t < segEnd) {
+      const bIdx = Math.floor((t - winStart) / bucketMs);
       if (bIdx < 0 || bIdx >= numBuckets) { t += bucketMs; continue; }
-      const bucketEnd = dayStart + (bIdx+1)*bucketMs;
-      const sliceEnd = Math.min(sEnd, bucketEnd);
+      const bucketEnd = winStart + (bIdx+1)*bucketMs;
+      const sliceEnd = Math.min(segEnd, bucketEnd);
       const sliceMs = sliceEnd - t;
       buckets[bIdx].good += sliceMs * goodRate;
       buckets[bIdx].bad  += sliceMs * badRate;
@@ -732,7 +762,7 @@ function buildBuckets() {
       t = sliceEnd;
     }
   });
-  return { buckets, dayStart, bucketMs, numBuckets };
+  return { buckets, winStart, winEnd, bucketMs, numBuckets };
 }
 
 function renderChart() {
@@ -745,9 +775,10 @@ function renderChart() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H_CHART + H_LABEL);
 
-  const { buckets, dayStart, bucketMs, numBuckets } = buildBuckets();
+  const { buckets, winStart, winEnd, bucketMs, numBuckets } = buildBuckets();
   const maxVal = Math.max(...buckets.map(b => b.good+b.bad+b.eye), 60000); // min 1분
   const barW = W / numBuckets;
+  const winMs = winEnd - winStart;
 
   // Draw stacked bars
   buckets.forEach((b, i) => {
@@ -770,23 +801,23 @@ function renderChart() {
     ctx.fillText(`${Math.round(maxVal/60000*pct)}분`, 2, y+9);
   });
 
-  // X-axis hour labels
-  const now = Date.now();
-  for (let h = 0; h <= 24; h += 2) {
-    const t = dayStart + h*3600000;
-    if (t > now + 3600000) break;
-    const x = (t - dayStart) / bucketMs * barW;
-    if (x < 0 || x > W) continue;
+  // X-axis: 윈도우 안의 정각(2시간 간격) 라벨 — 자정을 넘어가도 실제 시각 표시
+  const firstHour = new Date(winStart); firstHour.setMinutes(0, 0, 0);
+  for (let t = firstHour.getTime(); t <= winEnd; t += 3600000) {
+    if (t < winStart) continue;
+    const hr = new Date(t).getHours();
+    if (hr % 2 !== 0) continue;           // 2시간 간격만 라벨
+    const x = (t - winStart) / winMs * W;
     ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
-    ctx.fillText(`${h}시`, x, H_CHART+H_LABEL-3);
+    ctx.fillText(`${hr}시`, x, H_CHART+H_LABEL-3);
   }
 
-  // Now-line
-  const nowX = Math.min((now - dayStart) / bucketMs * barW, W-1);
+  // Now-line — 항상 오른쪽 끝(현재 시각)
+  const nowX = W - 1;
   ctx.strokeStyle='#f85149'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(nowX,0); ctx.lineTo(nowX,H_CHART); ctx.stroke();
-  ctx.fillStyle='#f85149'; ctx.font='9px sans-serif'; ctx.textAlign='center';
-  ctx.fillText('지금', nowX, 10);
+  ctx.fillStyle='#f85149'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+  ctx.fillText('지금', nowX-2, 10);
 
   renderSessionList();
 }
@@ -857,20 +888,33 @@ function makeSampleSession(h1, m1, h2, m2, goodR, badR, eyeR) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-// 샘플 데이터: 오늘 기준 이미 지난 시간대에 공부 기록을 시뮬레이션
-(function initSampleData() {
+// 데모용 샘플 데이터: 현재 시각 기준 "과거 12시간 윈도우" 안에 들어오도록 상대 시간으로 주입
+//   (절대 시각으로 박으면 지금이 새벽일 때 윈도우 밖으로 빠져 안 보임)
+//   실제 배포 시 데모가 필요 없으면 injectDemo() 호출만 지우면 됨
+(function injectDemo() {
   const now = Date.now();
-  [
-    makeSampleSession( 9,  0,  9, 47, 0.72, 0.18, 0.10),  // 09:00 ~ 09:47
-    makeSampleSession(10, 20, 11, 38, 0.58, 0.32, 0.10),  // 10:20 ~ 11:38
-    makeSampleSession(13,  5, 14, 25, 0.78, 0.14, 0.08),  // 13:05 ~ 14:25
-  ].filter(s => s.end < now - 5*60000)   // 현재보다 5분 이상 이전만
-   .forEach(s => sessions.push(s));
+  const rel = (startMinAgo, durMin, g, b, e) => {
+    const start = now - startMinAgo*60000;
+    const end   = start + durMin*60000;
+    const dur   = end - start;
+    sessions.push({
+      start, end,
+      studyMs:     Math.round(dur*(g+b)),
+      goodMs:      Math.round(dur*g),
+      badMs:       Math.round(dur*b),
+      eyeClosedMs: Math.round(dur*e),
+      isSample:    true
+    });
+  };
+  rel(11*60,      47, 0.72, 0.18, 0.10);  // 약 11시간 전
+  rel(9*60 + 10,  78, 0.58, 0.32, 0.10);  // 약 9시간 전
+  rel(4*60 + 30,  80, 0.78, 0.14, 0.08);  // 약 4.5시간 전
+  rel(1*60 + 20,  50, 0.66, 0.22, 0.12);  // 약 1.3시간 전
 })();
 
-try { Notification.requestPermission(); } catch(_) {}
-renderChart();
 setEl('tlDate', el => el.textContent = TODAY);
+// DOM 레이아웃 완료 후 차트 렌더 (canvas 너비 확보)
+requestAnimationFrame(() => renderChart());
 startCamera();
 </script>
 </body>
