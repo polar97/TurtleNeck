@@ -74,6 +74,26 @@ th { color: var(--sub); font-weight: 600; }
 #panel .next { font-size: 17px; }
 #msg { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); text-align: center; color: var(--stage-ink); font-size: 17px; display: grid; gap: 12px; }
 #msg button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid var(--stage-sub); font-size: 17px; }
+#trkRun { position: absolute; left: 12px; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--stage-sub); font-family: var(--mono); }
+video.mini { position: absolute; left: 12px; bottom: calc(48px + env(safe-area-inset-bottom, 0px)); width: 40px; height: 30px; object-fit: cover; opacity: .15; pointer-events: none; }
+
+/* ── 동공 인식 ── */
+:root { --lv0: #7a8794; --lv1: #2f8f5b; --lv2: #c07a12; --lv3: #c23b32; --lv4: #7a45b0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --lv0: #8d9aa7; --lv1: #5cc596; --lv2: #e3a94e; --lv3: #f0776c; --lv4: #b18ce6; } }
+:root[data-theme="dark"] { --lv0: #8d9aa7; --lv1: #5cc596; --lv2: #e3a94e; --lv3: #f0776c; --lv4: #b18ce6; }
+.cam { cursor: crosshair; touch-action: manipulation; }
+.cam canvas.ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.trkgrid { display: grid; grid-template-columns: minmax(110px, 170px) minmax(0, 1fr); gap: 12px; align-items: start; }
+#roiView { width: 100%; aspect-ratio: 1; image-rendering: pixelated; background: #000; border-radius: 8px; display: block; }
+#roiView.mir { transform: scaleX(-1); }
+figure { margin: 0; display: grid; gap: 4px; }
+figcaption { font-size: .76rem; color: var(--sub); }
+.plot { width: 100%; display: block; }
+.big { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+h3 { font-size: .92rem; margin: 6px 0 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; color: var(--sub); }
+.legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+.callout { border-left: 3px solid var(--accent); padding: 6px 10px; background: var(--bg); border-radius: 0 8px 8px 0; font-size: .9rem; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -82,7 +102,7 @@ th { color: var(--sub); font-weight: 600; }
 <main id="setup" class="wrap">
   <header>
     <h1>동공 인지부하 실험</h1>
-    <p class="lead">암산 문제를 소리로 들려주고, 푸는 동안 눈을 녹화합니다. 영상과 시행 기록(CSV)은 이 폰 안에만 저장되고 어디로도 전송되지 않습니다.</p>
+    <p class="lead">암산 문제를 소리로 들려주고, 푸는 동안 카메라로 <b>동공 지름을 실시간 인식</b>해 난이도별 변화를 그래프로 보여 줍니다. 기록(CSV)과 선택한 영상은 이 폰 안에만 저장되고 어디로도 전송되지 않습니다.</p>
   </header>
 
   <section class="card" aria-labelledby="h-who">
@@ -101,21 +121,34 @@ th { color: var(--sub); font-weight: 600; }
       <label class="f">답 입력 후 쉬기 (초, 최소)<input id="tRest" type="number" min="3" max="60" value="4"></label>
       <label class="f">블록 나누기 (문제 수마다 녹화 파일 분리)<input id="blockN" type="number" min="3" max="30" value="12"></label>
     </div>
-    <label class="row note"><input id="mic" type="checkbox"> 마이크도 함께 녹음 (답 말하는 소리 확인용. 아이폰은 켜면 문제 소리가 작아지거나 안 들릴 수 있음)</label>
+    <label class="row note"><input id="saveVideo" type="checkbox"> 눈 영상도 녹화 (선택: 나중에 다시 재 보거나 검증할 때만. 파일이 크고 폰이 느려질 수 있음)</label>
+    <label class="row note"><input id="mic" type="checkbox"> 영상 녹화 때 마이크도 함께 (답 말하는 소리 확인용. 아이폰은 켜면 문제 소리가 작아질 수 있음)</label>
     <div class="row"><button id="voiceTest" type="button">소리 테스트: "칠 곱하기 팔"</button><span id="voiceInfo" class="note"></span></div>
     <p class="note">소리가 안 들리면: 아이폰은 옆면 <b>무음 스위치</b>를 끄고 음량 버튼으로 크게, 블루투스 이어폰 연결 확인.</p>
   </section>
 
   <section class="card" aria-labelledby="h-cam">
-    <h2 id="h-cam">2. 카메라 맞추기</h2>
+    <h2 id="h-cam">2. 카메라 맞추기와 동공 인식</h2>
     <div class="grid2">
       <label class="f">카메라<select id="facing"><option value="user">전면 (폰 화면의 응시점을 보며 촬영, 권장)</option><option value="environment">후면 (화질 좋음, 응시점은 따로 준비)</option></select></label>
       <label class="f">화질<select id="res"><option value="1080">1080p (권장)</option><option value="2160">4K (파일이 매우 큼)</option><option value="720">720p</option></select></label>
     </div>
     <div class="row"><button id="camOn" type="button" class="primary">카메라 켜기</button><button id="lock" type="button" disabled>노출·초점 고정</button><button id="shot" type="button" disabled>시험 사진 찍기</button></div>
     <div class="row" id="zoomRow" hidden><label class="f" style="flex:1">확대(줌) <input id="zoom" type="range" min="1" max="1" step="0.1" value="1"></label></div>
-    <div id="camBox" class="cam" hidden><video id="preview" playsinline muted></video><div class="guide"><span></span><b>눈이 점선 안에 크게 들어오게 폰 거리를 맞추세요</b></div></div>
+    <div id="camBox" class="cam" hidden><video id="preview" playsinline muted></video><div class="guide"><span></span><b>눈을 점선 안에 크게 맞춘 뒤, 검은 동공을 손가락으로 탭하세요</b></div><canvas id="ov" class="ov"></canvas></div>
     <p id="camInfo" class="kv"></p>
+    <div id="trkBox" hidden>
+      <p class="callout" id="trkInfo">카메라 화면에서 <b>검은 동공을 탭</b>하세요. 초록 원이 동공 테두리에 맞게 따라다니면 인식 성공입니다.</p>
+      <div class="trkgrid">
+        <figure><canvas id="roiView" width="8" height="8"></canvas><figcaption>확대 화면 · 초록 = 동공으로 인식한 부분</figcaption></figure>
+        <figure><canvas id="live" class="plot"></canvas><figcaption>최근 20초 동공 지름 (px, 점 = 매 순간, 선 = 평활)</figcaption></figure>
+      </div>
+      <label class="f">동공 경계 기준 <span id="sensV">보통</span><input id="sens" type="range" min="0.3" max="0.7" step="0.05" value="0.5"></label>
+      <p class="note">초록 부분이 동공보다 <b>작으면 → 오른쪽</b>, 갈색 홍채까지 <b>번지면 → 왼쪽</b>. 실험 중에는 바꾸지 마세요.</p>
+      <div class="row"><button id="lightTest" type="button">빛 반사 테스트 (15초)</button><span class="note">+ 를 보는 동안 화면이 3초간 하얗게 됩니다. 동공이 작아지면 측정이 제대로 되는 것</span></div>
+      <canvas id="lightChart" class="plot" hidden></canvas>
+      <p id="lightInfo" class="note"></p>
+    </div>
     <div id="snapBox" class="snap" hidden></div>
     <p class="note">시험 사진에서 <b>검은 동공과 갈색 홍채의 경계</b>가 보여야 합니다. 경계가 안 보이면 조명을 조금 밝히거나 630 nm 빨간 필터를 렌즈에 대 보세요. 사진의 흰 반사점이 동공을 가리면 조명 위치를 옮기세요.</p>
   </section>
@@ -123,21 +156,34 @@ th { color: var(--sub); font-weight: 600; }
   <section class="card" aria-labelledby="h-go">
     <h2 id="h-go">3. 실험 전 확인</h2>
     <ol class="steps">
+      <li>2번에서 <b>초록 원이 동공을 잘 따라가고</b>, 빛 반사 테스트에서 동공이 작아지는지 확인</li>
       <li>방 조명 고정, 커튼 닫기. 폰 <b>자동 밝기 끄고</b> 밝기를 중간쯤으로 고정</li>
       <li>폰을 거치대에 고정, 턱받침으로 머리 고정 (눈–폰 거리 매번 같게)</li>
       <li>무음 모드 해제, 소리 크기 확인. 알림 끄기 (방해 금지 모드)</li>
       <li>참가자에게: "화면의 + 를 계속 보면서 머릿속으로만 풀고, 답을 소리 내어 말하세요"</li>
       <li>도우미는 참가자가 <b>답을 말하는 순간 화면을 한 번 탭</b>합니다 (왼쪽 아래에 ✓ 표시). 빠른 모드는 이어서 ○/× 만 누르면 자동으로 다음 문제</li>
     </ol>
-    <div class="row"><button id="practice" type="button">연습 2문제</button><button id="start" type="button" class="primary">실험 시작 (녹화)</button></div>
+    <div class="row"><button id="practice" type="button">연습 2문제</button><button id="start" type="button" class="primary">실험 시작</button></div>
     <p id="startInfo" class="note"></p>
   </section>
 
   <section class="card" id="results" hidden aria-labelledby="h-res">
-    <h2 id="h-res">4. 저장</h2>
-    <p class="note">블록마다 영상 1개가 생깁니다. 영상의 시간(초)과 CSV의 시각이 같은 기준이라, CSV의 <b>t_problem</b> 시각을 영상에서 찾아가면 됩니다. 페이지를 닫기 전에 꼭 저장하세요.</p>
+    <h2 id="h-res">4. 결과: 동공 크기 변화</h2>
+    <p id="resHead" class="callout"></p>
+    <h3>난이도별 동공 변화</h3>
+    <canvas id="chBar" class="plot"></canvas>
+    <p class="note">막대 = 평균, 점 = 문제 하나. <b>문제 듣기 직전 기준선</b>의 평균 지름 대비 <b>풀이하는 동안</b> 평균 지름이 몇 % 커졌는지.</p>
+    <h3>문제 시작 후 시간에 따른 변화</h3>
+    <div id="lgLine" class="legend"></div>
+    <canvas id="chLine" class="plot"></canvas>
+    <p class="note">0초 = 문제 음성 시작. 같은 단계 문제를 모두 평균. 각 문제는 답을 말하고 1초 뒤까지만 사용.</p>
+    <h3>전체 기록</h3>
+    <canvas id="chTime" class="plot"></canvas>
+    <p class="note">회색 점 = 매 순간 인식된 동공 지름(px), 파란 선 = 0.5초 평활, 색 띠 = 문제 푸는 구간(단계 색). 점이 비는 곳은 깜빡임·인식 실패.</p>
+    <h3>저장</h3>
+    <p class="note">페이지를 닫기 전에 저장하세요. <b>문제별 기록</b>에 동공 변화(dil_pct)가 들어 있고, <b>동공 원자료</b>는 초당 약 15번 잰 지름 전체입니다(그래프 다시 그리기용).</p>
+    <div class="row"><button id="csvBtn" type="button" class="primary">문제별 기록 CSV</button><button id="rawBtn" type="button">동공 원자료 CSV</button><button id="shareBtn" type="button">파일 공유(폰)</button></div>
     <div id="files" class="grid2"></div>
-    <div class="row"><button id="csvBtn" type="button" class="primary">기록 CSV 저장</button><button id="shareBtn" type="button">파일 공유(폰)</button></div>
     <div class="tbl"><table id="tbl"></table></div>
   </section>
 </main>
@@ -154,6 +200,7 @@ th { color: var(--sub); font-weight: 600; }
     <div class="rate" id="rate"></div>
     <button class="next" id="nextBtn" type="button" disabled>다음 문제</button>
   </div>
+  <div id="trkRun"></div>
   <div id="hud"></div>
   <div id="rec"></div>
   <button id="stop" type="button">중단</button>
@@ -248,13 +295,14 @@ async function camOn() {
   const caps = track.getCapabilities ? track.getCapabilities() : {};
   if (caps.zoom) { const z = $('zoom'); z.min = caps.zoom.min; z.max = caps.zoom.max; z.step = caps.zoom.step || 0.1; z.value = track.getSettings().zoom || caps.zoom.min; $('zoomRow').hidden = false; }
   camInfoUpdate();
+  TRK.on = false; $('trkBox').hidden = false; trkLoop();
 }
 function camInfoUpdate(extra = '') {
   const s = track.getSettings();
   $('camInfo').textContent = `실제 해상도 ${s.width}×${s.height} · ${Math.round(s.frameRate || 0)}fps` + (s.zoom ? ` · 줌 ${(+s.zoom).toFixed(1)}` : '') + (extra ? ' · ' + extra : '');
 }
 $('camOn').onclick = camOn;
-$('zoom').oninput = e => track?.applyConstraints({ advanced: [{ zoom: +e.target.value }] }).then(() => camInfoUpdate()).catch(() => {});
+$('zoom').oninput = e => { TRK.on = false; $('trkInfo').innerHTML = '확대가 바뀌었습니다. 동공을 <b>다시 탭</b>하세요.'; track?.applyConstraints({ advanced: [{ zoom: +e.target.value }] }).then(() => camInfoUpdate()).catch(() => {}); };
 $('lock').onclick = async () => {
   const caps = track.getCapabilities ? track.getCapabilities() : {}, adv = [], done = [];
   if (caps.exposureMode?.includes('manual')) { adv.push({ exposureMode: 'manual' }); done.push('노출'); }
@@ -274,11 +322,281 @@ $('shot').onclick = () => {
 };
 const shots = [];
 
+// ─── 동공 인식 ───
+// 탭한 곳 주변(ROI)만 잘라 빨간 채널(갈색 홍채와 검은 동공의 대비가 가장 큼)로 본다.
+// 가장 어두운 점에서 시작해 "동공 밝기와 홍채 밝기의 중간값"보다 어두운 영역을 채워 나가고,
+// 동공 안의 흰 반사점은 구멍 메우기로 포함한 뒤, 넓이로 지름을 구한다 (경계 픽셀은 밝기에 비례해 일부만 셈).
+const TRK = { on: false, cx: 0, cy: 0, d: 0, dRef: 0, pl: null, il: null, lost: 0, n: 0 };
+let SENS = 0.5;
+const wc = document.createElement('canvas'), wx = wc.getContext('2d', { willReadFrequently: true });
+let liveBuf = [], logArr = null, sessT0 = 0, frameN = 0;
+const PH = { pid: '', practice: 0, run: 0, blk: 0, trial: '', level: '', ph: '' };
+const median = a => { if (!a.length) return NaN; const s = Float64Array.from(a).sort(), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const WHY = { dark: '어두운 곳을 못 찾음 — 동공을 다시 탭', edge: '확대 영역 가장자리에 닿음 — 다시 탭', leak: '홍채까지 번짐 — 경계 기준을 왼쪽으로', shape: '원 모양이 아님 (깜빡임?)', jump: '크기가 갑자기 바뀜 (깜빡임?)', small: '너무 작음 — 더 가까이 또는 확대', contrast: '동공·홍채 구분이 안 됨 — 조명을 조금 밝게' };
+
+function trkSeed(x, y) { Object.assign(TRK, { on: true, cx: x, cy: y, d: 0, dRef: 0, pl: null, il: null, lost: 0, n: 0 }); liveBuf = []; }
+
+function detect(v) {
+  const vw = v.videoWidth, vh = v.videoHeight, short = Math.min(vw, vh);
+  let R = TRK.d ? Math.max(TRK.d * 2.2, 16) : short * 0.09;
+  if (TRK.lost > 8) R *= 1.5;
+  R = Math.min(R, short * 0.3);
+  const s = Math.round(2 * R);
+  const x0 = Math.round(Math.min(Math.max(TRK.cx - R, 0), vw - s)), y0 = Math.round(Math.min(Math.max(TRK.cy - R, 0), vh - s));
+  const k = Math.max(1, s / 160), W = Math.round(s / k), H = W, N = W * H;   // k = 영상 px / 작업 px
+  if (wc.width !== W) { wc.width = W; wc.height = H; }
+  wx.drawImage(v, x0, y0, s, s, 0, 0, W, H);
+  const px = wx.getImageData(0, 0, W, H).data, g0 = new Float32Array(N), g = new Float32Array(N);
+  for (let i = 0; i < N; i++) g0[i] = px[i * 4];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {          // 3×3 평균 (잡음 줄이기)
+    let sum = 0, c = 0;
+    for (let yy = Math.max(0, y - 1); yy <= Math.min(H - 1, y + 1); yy++) for (let xx = Math.max(0, x - 1); xx <= Math.min(W - 1, x + 1); xx++) { sum += g0[yy * W + xx]; c++; }
+    g[y * W + x] = sum / c;
+  }
+  const base = { ok: false, x0, y0, s, k, W, H, g, M: null };
+  const fail = why => Object.assign(base, { why });
+  let thr, dl;
+  if (TRK.pl != null) { thr = TRK.pl + SENS * (TRK.il - TRK.pl); dl = Math.max(2, (TRK.il - TRK.pl) * 0.15); }
+  else { const srt = Float32Array.from(g).sort(), lo = srt[Math.floor(N * 0.01)], mid = srt[Math.floor(N * 0.5)]; thr = lo + 0.3 * (mid - lo); dl = Math.max(2, (mid - lo) * 0.08); }
+  base.thr = thr;
+  // 시작점: 예상 중심 근처에서 가장 어두운 픽셀
+  const ccx = (TRK.cx - x0) / k, ccy = (TRK.cy - y0) / k, rs = TRK.d ? Math.max(3, TRK.d / k * 0.5) : W * 0.2;
+  let best = -1, bv = Infinity;
+  for (let y = Math.max(0, Math.floor(ccy - rs)); y <= Math.min(H - 1, Math.ceil(ccy + rs)); y++)
+    for (let x = Math.max(0, Math.floor(ccx - rs)); x <= Math.min(W - 1, Math.ceil(ccx + rs)); x++)
+      if ((x - ccx) ** 2 + (y - ccy) ** 2 <= rs * rs && g[y * W + x] < bv) { bv = g[y * W + x]; best = y * W + x; }
+  if (best < 0 || bv >= thr) return fail('dark');
+  // 채우기 (시작점에서 mr 이내만: 홍채·속눈썹으로 번지는 것 방지)
+  const M = new Uint8Array(N), st = new Int32Array(N), sx = best % W, sy = (best / W) | 0;
+  const mr = TRK.d ? TRK.d / k * 0.95 + 2 : W * 0.3, mr2 = mr * mr;
+  let sp = 0, cnt = 0, sxx = 0, syy = 0, bx0 = W, bx1 = -1, by0 = H, by1 = -1, edge = false, clipped = 0;
+  M[best] = 1; st[sp++] = best;
+  while (sp) {
+    const i = st[--sp], x = i % W, y = (i / W) | 0;
+    cnt++; sxx += x; syy += y;
+    if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+    if (x === 0 || y === 0 || x === W - 1 || y === H - 1) edge = true;
+    for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1]) {
+      if (j < 0 || M[j] || g[j] >= thr) continue;
+      if (((j % W) - sx) ** 2 + (((j / W) | 0) - sy) ** 2 > mr2) { clipped++; continue; }
+      M[j] = 1; st[sp++] = j;
+    }
+  }
+  if (cnt < 8) return fail('small');
+  if (edge) return fail('edge');
+  if (clipped > 0.2 * cnt) return fail('leak');
+  // 구멍(반사점) 메우기: 상자 테두리에서 닿지 않는 빈칸 = 구멍
+  const ex0 = Math.max(0, bx0 - 1), ex1 = Math.min(W - 1, bx1 + 1), ey0 = Math.max(0, by0 - 1), ey1 = Math.min(H - 1, by1 + 1);
+  const V = new Uint8Array(N); sp = 0;
+  for (let x = ex0; x <= ex1; x++) for (const y of [ey0, ey1]) { const i = y * W + x; if (!M[i] && !V[i]) { V[i] = 1; st[sp++] = i; } }
+  for (let y = ey0; y <= ey1; y++) for (const x of [ex0, ex1]) { const i = y * W + x; if (!M[i] && !V[i]) { V[i] = 1; st[sp++] = i; } }
+  while (sp) {
+    const i = st[--sp], x = i % W, y = (i / W) | 0;
+    for (const [xx, yy] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+      if (xx < ex0 || xx > ex1 || yy < ey0 || yy > ey1) continue;
+      const j = yy * W + xx; if (!M[j] && !V[j]) { V[j] = 1; st[sp++] = j; }
+    }
+  }
+  let holes = 0, area = 0;
+  for (let y = ey0; y <= ey1; y++) for (let x = ex0; x <= ex1; x++) {
+    const i = y * W + x;
+    if (!M[i] && !V[i]) { M[i] = 2; holes++; }
+  }
+  for (let y = ey0; y <= ey1; y++) for (let x = ex0; x <= ex1; x++) {
+    const i = y * W + x;
+    if (M[i] === 2) area += 1;
+    else if (M[i] === 1) area += Math.min(1, 0.5 + (thr - g[i]) / (2 * dl));
+    else if ((x > 0 && M[i - 1]) || (x < W - 1 && M[i + 1]) || (y > 0 && M[i - W]) || (y < H - 1 && M[i + W])) area += Math.max(0, 0.5 - (g[i] - thr) / (2 * dl));
+  }
+  base.M = M;
+  const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1;
+  if ((cnt + holes) / (Math.PI / 4 * bw * bh) < 0.6 || bw / bh > 1.9 || bh / bw > 1.9) return fail('shape');
+  const dw = 2 * Math.sqrt(area / Math.PI), d = dw * k, mx = sxx / cnt + 0.5, my = syy / cnt + 0.5;
+  if (TRK.n >= 10 && (d > TRK.dRef * 1.8 || d < TRK.dRef * 0.45)) return fail('jump');
+  // 다음 프레임 기준: 동공 밝기, 동공 바깥 고리(홍채) 밝기
+  const pv = [], iv = [], r1 = dw / 2 * 1.35, r2 = dw / 2 * 2.0;
+  for (let y = Math.max(0, Math.floor(my - r2)); y <= Math.min(H - 1, Math.ceil(my + r2)); y++)
+    for (let x = Math.max(0, Math.floor(mx - r2)); x <= Math.min(W - 1, Math.ceil(mx + r2)); x++) {
+      const i = y * W + x, rr = Math.hypot(x + 0.5 - mx, y + 0.5 - my);
+      if (M[i] === 1) pv.push(g[i]); else if (!M[i] && rr >= r1 && rr <= r2) iv.push(g[i]);
+    }
+  const pl = median(pv), il = median(iv);
+  if (!(il - pl >= 5)) return fail('contrast');
+  TRK.pl = TRK.pl == null ? pl : 0.7 * TRK.pl + 0.3 * pl;
+  TRK.il = TRK.il == null ? il : 0.7 * TRK.il + 0.3 * il;
+  TRK.cx = x0 + mx * k; TRK.cy = y0 + my * k; TRK.d = d; TRK.lost = 0; TRK.n++;
+  TRK.dRef = TRK.n < 10 ? d : TRK.dRef + 0.02 * (d - TRK.dRef);
+  return Object.assign(base, { ok: true, d, cx: TRK.cx, cy: TRK.cy });
+}
+
+function logSample(r) {
+  const now = performance.now(), d = r && r.ok ? r.d : NaN;
+  liveBuf.push({ tn: now / 1000, d });
+  while (liveBuf.length && liveBuf[0].tn < now / 1000 - 30) liveBuf.shift();
+  if (logArr) logArr.push({ pid: PH.pid, practice: PH.practice, run: PH.run, blk: PH.blk, t: (now - t0) / 1000, ts: (now - sessT0) / 1000,
+    trial: PH.trial, level: PH.level, ph: PH.ph, d, x: r && r.ok ? r.cx : NaN, y: r && r.ok ? r.cy : NaN });
+}
+const okRatio = sec => { const t = performance.now() / 1000 - sec, a = liveBuf.filter(p => p.tn > t); return a.length ? a.filter(p => p.d === p.d).length / a.length : 0; };
+
+let loopOn = false;
+function trkLoop() {
+  if (loopOn) return; loopOn = true;
+  const step = () => {
+    const a = performance.now(), v = $('preview');
+    if (!stream) { loopOn = false; return; }
+    if (v.paused) v.play().catch(() => {});
+    if (TRK.on && v.videoWidth) {
+      let r = null;
+      try { r = detect(v); } catch (e) { console.error(e); }
+      if (!r || !r.ok) TRK.lost++;
+      logSample(r);
+      if ($('run').hidden) drawSetup(r);
+      else $('trkRun').textContent = okRatio(2) >= 0.5 ? `동공 ◉ ${Math.round(okRatio(2) * 100)}%` : '동공 ○ 인식 안 됨';
+    } else if ($('run').hidden) drawSetup(null);
+    setTimeout(step, Math.max(5, 66 - (performance.now() - a)));   // 초당 약 15번
+  };
+  step();
+}
+
+// 화면 좌표 ↔ 영상 좌표 (object-fit: cover, 전면 카메라는 좌우 반전)
+function camMap() {
+  const v = $('preview'), r = v.getBoundingClientRect(), vw = v.videoWidth, vh = v.videoHeight, s = Math.max(r.width / vw, r.height / vh);
+  return { r, s, ox: (r.width - vw * s) / 2, oy: (r.height - vh * s) / 2, mir: !$('camBox').classList.contains('back') };
+}
+const v2e = (m, x, y) => { let ex = m.ox + x * m.s; if (m.mir) ex = m.r.width - ex; return [ex, m.oy + y * m.s]; };
+const e2v = (m, ex, ey) => { if (m.mir) ex = m.r.width - ex; return [(ex - m.ox) / m.s, (ey - m.oy) / m.s]; };
+$('camBox').addEventListener('pointerdown', e => {
+  const v = $('preview'); if (!stream || !v.videoWidth) return;
+  const m = camMap(), [x, y] = e2v(m, e.clientX - m.r.left, e.clientY - m.r.top);
+  if (x < 0 || y < 0 || x > v.videoWidth || y > v.videoHeight) return;
+  trkSeed(x, y);
+});
+$('sens').oninput = e => { SENS = +e.target.value; $('sensV').textContent = SENS < 0.45 ? '(좁게)' : SENS > 0.55 ? '(넓게)' : '보통'; };
+
+function drawSetup(r) {
+  const box = $('camBox'), ov = $('ov'); if (box.hidden) return;
+  const m = camMap(), dpr = window.devicePixelRatio || 1, W = m.r.width, H = m.r.height;
+  if (!W) return;
+  if (ov.width !== Math.round(W * dpr) || ov.height !== Math.round(H * dpr)) { ov.width = Math.round(W * dpr); ov.height = Math.round(H * dpr); }
+  const g = ov.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  if (!TRK.on) return;
+  if (r) {
+    const [ax, ay] = v2e(m, r.x0, r.y0), [bx, by] = v2e(m, r.x0 + r.s, r.y0 + r.s);
+    g.setLineDash([4, 4]); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 1; g.strokeRect(Math.min(ax, bx), ay, Math.abs(bx - ax), by - ay); g.setLineDash([]);
+  }
+  const ok = r && r.ok, [ex, ey] = v2e(m, TRK.cx, TRK.cy), rad = Math.max(4, (TRK.d || 12) / 2 * m.s);
+  g.strokeStyle = ok ? '#39e27f' : '#ff5a5a'; g.lineWidth = 2; g.beginPath(); g.arc(ex, ey, rad, 0, 7); g.stroke();
+  if (r) drawRoi(r, m.mir);
+  const pct = Math.round(okRatio(5) * 100);
+  $('trkInfo').innerHTML = ok
+    ? `동공 지름 <b>${r.d.toFixed(1)} px</b> · 최근 5초 인식률 <b>${pct}%</b>` + (r.d < 15 ? '<br>⚠ 동공이 15 px보다 작습니다. 폰을 더 가까이 두거나 확대하세요.' : '')
+    : `<b style="color:var(--bad)">인식 못 함</b> · ${WHY[r?.why] || '동공을 탭하세요'} · 최근 5초 인식률 ${pct}%`;
+  if (++frameN % 3 === 0) {
+    const now = performance.now() / 1000, pts = liveBuf.filter(p => p.tn > now - 20).map(p => [p.tn - now, p.d]);
+    chart($('live'), { h: 130, xr: [-20, 0], minSpan: 4, series: [{ pts, color: cv('--sub'), dots: true, r: 1.3 }, { pts: smooth(pts, 0.25), color: cv('--accent'), w: 2 }], empty: '인식되면 여기에 그래프가 그려집니다' });
+  }
+}
+function drawRoi(r, mir) {
+  const c = $('roiView'); if (c.width !== r.W) { c.width = r.W; c.height = r.H; }
+  c.classList.toggle('mir', mir);
+  const x = c.getContext('2d'), im = x.createImageData(r.W, r.H), D = im.data;
+  for (let i = 0; i < r.W * r.H; i++) {
+    const v = r.g[i], m = r.M ? r.M[i] : 0;
+    D[i * 4] = m ? v * 0.35 : v; D[i * 4 + 1] = m ? 110 + v * 0.55 : v; D[i * 4 + 2] = m === 2 ? 190 : m ? v * 0.35 : v; D[i * 4 + 3] = 255;
+  }
+  x.putImageData(im, 0, 0);
+}
+
+// ─── 그래프 ───
+const cv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const lvc = l => cv('--lv' + l) || '#888888';
+const hexA = (h, a) => { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${a})`; };
+const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+const fmt = v => Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v)) : v.toFixed(1);
+function ticks(a, b, n) {
+  const st0 = (b - a) / n || 1, p = 10 ** Math.floor(Math.log10(st0)), m = st0 / p, st = (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p, out = [];
+  for (let v = Math.ceil(a / st) * st; v <= b + st * 1e-6; v += st) out.push(Math.abs(v) < st * 1e-6 ? 0 : v);
+  return out;
+}
+function smooth(pts, half) {           // 앞뒤 half초 안의 인식값 중앙값
+  const out = []; let a = 0, b = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const t = pts[i][0];
+    while (pts[a][0] < t - half) a++;
+    while (b < pts.length && pts[b][0] <= t + half) b++;
+    const w = []; for (let j = a; j < b; j++) if (Number.isFinite(pts[j][1])) w.push(pts[j][1]);
+    out.push([t, w.length >= 3 ? median(w) : NaN]);
+  }
+  return out;
+}
+function prep(c, h) {
+  c.hidden = false;
+  const dpr = window.devicePixelRatio || 1, w = Math.max(160, c.clientWidth || c.parentElement.clientWidth);
+  c.style.height = h + 'px';
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
+  x.font = '11px ' + cv('--font'); x.lineJoin = 'round';
+  return [x, w, h];
+}
+function chart(c, o) {
+  const [g, W, H] = prep(c, o.h || 170), sub = cv('--sub'), grid = cv('--line');
+  const ys = o.series.flatMap(s => s.pts.map(p => p[1])).filter(Number.isFinite);
+  if (!ys.length) { g.fillStyle = sub; g.textBaseline = 'top'; g.fillText(o.empty || '인식된 자료가 없습니다', 8, 10); return; }
+  let x0, x1;
+  if (o.xr) [x0, x1] = o.xr; else { const xs = o.series.flatMap(s => s.pts.map(p => p[0])); x0 = Math.min(...xs); x1 = Math.max(...xs); }
+  if (x1 <= x0) x1 = x0 + 1;
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const span = Math.max(y1 - y0, o.minSpan || 1), mid = (y0 + y1) / 2;
+  y0 = mid - span * 0.6; y1 = mid + span * 0.6;
+  if (o.zero) { y0 = Math.min(y0, 0); y1 = Math.max(y1, 0); }
+  const L = 40, Rm = 8, T = 8, B = 20;
+  const px = v => L + (v - x0) / (x1 - x0) * (W - L - Rm), py = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+  for (const s of o.shades || []) { g.fillStyle = s.color; g.fillRect(px(s.a), T, Math.max(1, px(s.b) - px(s.a)), H - T - B); }
+  g.lineWidth = 1; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const t of ticks(y0, y1, 4)) { g.strokeStyle = grid; g.beginPath(); g.moveTo(L, py(t)); g.lineTo(W - Rm, py(t)); g.stroke(); g.fillStyle = sub; g.fillText(fmt(t) + (o.ys || ''), L - 4, py(t)); }
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const t of ticks(x0, x1, Math.max(3, Math.floor(W / 70)))) g.fillText(fmt(t) + (o.xs || ''), px(t), H - B + 4);
+  if (o.zero) { g.strokeStyle = sub; g.beginPath(); g.moveTo(L, py(0)); g.lineTo(W - Rm, py(0)); g.stroke(); }
+  for (const x of o.vlines || []) { g.strokeStyle = sub; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(px(x), T); g.lineTo(px(x), H - B); g.stroke(); g.setLineDash([]); }
+  for (const s of o.series) {
+    g.strokeStyle = g.fillStyle = s.color; g.lineWidth = s.w || 2;
+    if (s.dots) { for (const [x, y] of s.pts) if (Number.isFinite(y)) g.fillRect(px(x) - (s.r || 1.5), py(y) - (s.r || 1.5), 2 * (s.r || 1.5), 2 * (s.r || 1.5)); continue; }
+    g.beginPath(); let pen = false;
+    for (const [x, y] of s.pts) { if (!Number.isFinite(y)) { pen = false; continue; } pen ? g.lineTo(px(x), py(y)) : g.moveTo(px(x), py(y)); pen = true; }
+    g.stroke();
+  }
+}
+function bars(c, gs) {
+  const [g, W, H] = prep(c, 210), sub = cv('--sub'), fg = cv('--fg'), grid = cv('--line'), font = cv('--font');
+  const all = gs.flatMap(q => q.vals);
+  if (!all.length) { g.fillStyle = sub; g.textBaseline = 'top'; g.fillText('동공 변화를 계산한 문제가 없습니다 (인식률 부족)', 8, 10); return; }
+  let y0 = Math.min(0, ...all), y1 = Math.max(0, ...all);
+  const sp = Math.max(y1 - y0, 4); y0 -= sp * 0.12; y1 += sp * 0.15;
+  const L = 42, Rm = 8, T = 10, B = 36, py = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B), bw = (W - L - Rm) / gs.length;
+  g.lineWidth = 1; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const t of ticks(y0, y1, 4)) { g.strokeStyle = grid; g.beginPath(); g.moveTo(L, py(t)); g.lineTo(W - Rm, py(t)); g.stroke(); g.fillStyle = sub; g.fillText(fmt(t) + '%', L - 4, py(t)); }
+  g.strokeStyle = sub; g.beginPath(); g.moveTo(L, py(0)); g.lineTo(W - Rm, py(0)); g.stroke();
+  gs.forEach((q, i) => {
+    const cx = L + bw * (i + 0.5), w = Math.min(60, bw * 0.55);
+    g.textAlign = 'center'; g.textBaseline = 'top'; g.font = '12px ' + font; g.fillStyle = fg; g.fillText(q.label, cx, H - B + 5);
+    g.font = '11px ' + font; g.fillStyle = sub; g.fillText(`${q.vals.length}문제`, cx, H - B + 20);
+    if (!q.vals.length) return;
+    const m = mean(q.vals), yT = py(Math.max(m, 0)), yB = py(Math.min(m, 0));
+    g.fillStyle = hexA(q.color, 0.28); g.fillRect(cx - w / 2, yT, w, Math.max(1, yB - yT));
+    g.strokeStyle = q.color; g.lineWidth = 2; g.strokeRect(cx - w / 2, yT, w, Math.max(1, yB - yT));
+    g.fillStyle = q.color;
+    q.vals.forEach((v, j) => { g.beginPath(); g.arc(cx + ((j * 0.618) % 1 - 0.5) * w * 0.7, py(v), 3, 0, 7); g.fill(); });
+    g.fillStyle = fg; g.font = '600 12px ' + font; g.textBaseline = m >= 0 ? 'bottom' : 'top';
+    g.fillText((m >= 0 ? '+' : '') + m.toFixed(1) + '%', cx, m >= 0 ? Math.min(yT, py(Math.max(...q.vals))) - 4 : Math.max(yB, py(Math.min(...q.vals))) + 4);
+    g.font = '11px ' + font;
+  });
+}
+
 // ─── 녹화 ───
 function pickMime() {
   const c = stream && stream.getAudioTracks().length
-    ? ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-    : ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    ? ['video/mp4;codecs=avc3,mp4a', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+    : ['video/mp4;codecs=avc3', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
   return c.find(m => window.MediaRecorder?.isTypeSupported?.(m)) || '';
 }
 let rec = null, chunks = [], t0 = 0;
@@ -412,68 +730,142 @@ function showMsg(html, btnText) {
   });
 }
 
+// 실험 화면 들어가기/나오기: 카메라 영상 요소를 실험 화면 안으로 옮겨(아주 작게) 계속 인식되게 한다
+async function enterStage() {
+  try { wake = await navigator.wakeLock?.request('screen'); } catch {}
+  $('run').hidden = false; stageLayout(); $('cross').hidden = true; $('trkRun').textContent = '';
+  const v = $('preview'); v.classList.add('mini'); $('run').appendChild(v); v.play().catch(() => {});
+  try { await document.documentElement.requestFullscreen?.(); } catch {}
+}
+async function exitStage() {
+  const v = $('preview'); v.classList.remove('mini'); $('camBox').prepend(v); v.play().catch(() => {});
+  $('run').hidden = true; $('msg').hidden = true; $('panel').hidden = true; $('hud').textContent = ''; $('rec').textContent = '';
+  try { await document.exitFullscreen?.(); } catch {}
+  try { await wake?.release(); } catch {}
+}
+const asleep = ms => new Promise(r => { const t = setTimeout(r, ms); abortWaiters.push(() => { clearTimeout(t); r(); }); });
+
+// 빛 반사 테스트: 회색 5초 → 흰색 3초 → 회색 7초. 흰 화면에서 동공이 작아지면 인식이 제대로 되는 것
+$('lightTest').onclick = async () => {
+  if (!TRK.on) { $('lightInfo').textContent = '먼저 카메라 화면에서 동공을 탭하세요.'; return; }
+  aborted = false; abortWaiters = [];
+  const arr = [];
+  Object.assign(PH, { pid: 'light', practice: 1, run: 0, blk: 0, trial: '', level: '', ph: 'gray' });
+  await enterStage(); $('cross').hidden = false; $('hud').textContent = '빛 반사 테스트 · + 를 계속 보세요';
+  t0 = sessT0 = performance.now(); logArr = arr;
+  await asleep(5000);
+  if (!aborted) { PH.ph = 'white'; $('run').style.setProperty('--stage', '#ffffff'); await asleep(3000); }
+  stageLayout(); PH.ph = 'gray';
+  if (!aborted) await asleep(7000);
+  logArr = null;
+  await exitStage();
+  const pts = arr.map(s => [s.t, s.d]), sm = smooth(pts, 0.25);
+  const b0 = median(arr.filter(s => s.t >= 2 && s.t < 5 && s.d === s.d).map(s => s.d));
+  const low = Math.min(...sm.filter(p => p[0] >= 5.2 && p[0] < 9.5 && Number.isFinite(p[1])).map(p => p[1]));
+  const valid = arr.length ? Math.round(100 * arr.filter(s => s.d === s.d).length / arr.length) : 0;
+  chart($('lightChart'), { h: 150, xr: [0, 15], xs: '초', minSpan: 4, shades: [{ a: 5, b: 8, color: 'rgba(235,190,40,.28)' }],
+    series: [{ pts, color: cv('--sub'), dots: true, r: 1.3 }, { pts: sm, color: cv('--accent'), w: 2 }] });
+  const pct = (low / b0 - 1) * 100;
+  $('lightInfo').innerHTML = !Number.isFinite(pct) ? '⚠ 동공을 거의 인식하지 못했습니다. 더 가까이·더 밝게 찍고 동공을 다시 탭하세요.'
+    : (pct < -8 ? `✅ 흰 화면(노란 띠)에서 동공이 <b>${Math.abs(pct).toFixed(0)}%</b> 작아졌습니다. 인식이 잘 됩니다.`
+                : `⚠ 변화가 ${Math.abs(pct).toFixed(0)}%로 작습니다. 초록 원이 동공 테두리를 따라가는지 보고, 경계 기준을 조절하거나 더 가까이 찍어 보세요.`) + ` (인식률 ${valid}%)`;
+};
+
+// 한 문제의 동공 지표: 기준선 = 문제 직전 [t_baseline_start, t_problem), 반응 = 문제 시작 0.5초 뒤 ~ 답한 순간
+function trialPupil(r) {
+  const S = samples.filter(s => s.run === r._run && s.blk === r._blk), ok = s => s.d === s.d, D = a => a.map(s => s.d);
+  const win = (a, b) => S.filter(s => s.t >= a && s.t < b);
+  const bAll = win(r._tb, r._tp), rAll = win(r._tp + 0.5, Math.max(r._ta, r._tp + 1.5)), bOk = bAll.filter(ok), rOk = rAll.filter(ok);
+  const out = { pupil_base_px: '', pupil_resp_px: '', pupil_peak_px: '', dil_pct: '', dil_peak_pct: '', pupil_valid_pct: '' };
+  if (bAll.length + rAll.length) out.pupil_valid_pct = Math.round(100 * (bOk.length + rOk.length) / (bAll.length + rAll.length));
+  if (bOk.length < 5 || rOk.length < 3) return out;
+  const b = mean(D(bOk)), m = mean(D(rOk)), pk = win(r._tp, r._ta + 1).filter(ok);
+  let peak = -Infinity;
+  for (const s of pk) { const nb = pk.filter(q => Math.abs(q.t - s.t) <= 0.25); if (nb.length >= 3) peak = Math.max(peak, mean(D(nb))); }
+  Object.assign(out, { pupil_base_px: b.toFixed(2), pupil_resp_px: m.toFixed(2), dil_pct: ((m / b - 1) * 100).toFixed(2) });
+  if (Number.isFinite(peak)) Object.assign(out, { pupil_peak_px: peak.toFixed(2), dil_peak_pct: ((peak / b - 1) * 100).toFixed(2) });
+  return out;
+}
+function trialCurve(r, pre, post, dt) {         // 문제 시작 기준 시간축의 % 변화 (답한 1초 뒤까지만)
+  const b = +r.pupil_base_px; if (!b) return null;
+  const n = Math.round((pre + post) / dt), sum = new Float64Array(n), c = new Uint16Array(n);
+  for (const s of samples) {
+    if (s.run !== r._run || s.blk !== r._blk || s.d !== s.d || s.t < r._tp - pre || s.t >= Math.min(r._tp + post, r._ta + 1)) continue;
+    const i = Math.floor((s.t - r._tp + pre) / dt); if (i >= 0 && i < n) { sum[i] += s.d; c[i]++; }
+  }
+  return Array.from({ length: n }, (_, i) => c[i] ? (sum[i] / c[i] / b - 1) * 100 : NaN);
+}
+
+let samples = [], runSeq = 0, lastRun = 0, lastCfg = null;
 async function runExperiment(practice) {
   if (!stream) { $('startInfo').textContent = '먼저 2번에서 카메라를 켜세요.'; return; }
   const trials = buildTrials(practice);
-  const cfg = { fast: $('mode').value === 'fast', base: +$('tBase').value, solve: +$('tSolve').value, rest: +$('tRest').value, blockN: +$('blockN').value, present: $('present').value };
+  const cfg = { fast: $('mode').value === 'fast', base: +$('tBase').value, solve: +$('tSolve').value, rest: +$('tRest').value, blockN: +$('blockN').value, present: $('present').value, video: $('saveVideo').checked };
+  if (!TRK.on && !cfg.video) { $('startInfo').textContent = '2번 카메라 화면에서 동공을 먼저 탭하세요 (또는 1번에서 영상 녹화를 켜세요).'; return; }
   const pid = $('pid').value.trim() || 'P';
   aborted = false; abortWaiters = [];
   if (cfg.present === 'tts') speak(' '); else if (cfg.present === 'clip') unlockAudio();   // 첫 탭에서 소리 잠금 해제
-  try { wake = await navigator.wakeLock?.request('screen'); } catch {}
-  $('run').hidden = false; stageLayout(); $('cross').hidden = true;
-  try { await document.documentElement.requestFullscreen?.(); } catch {}
-  if (!practice) rows = rows.filter(r => r.pid !== pid);
+  await enterStage();
+  if (!practice) { rows = rows.filter(r => r.pid !== pid); samples = samples.filter(s => s.pid !== pid); }
+  const run = ++runSeq; lastRun = run; lastCfg = cfg;
+  sessT0 = t0 = performance.now(); logArr = samples;
+  Object.assign(PH, { pid, practice: practice ? 1 : 0, run, blk: 0, trial: '', level: '', ph: 'intro' });
 
   const blocks = [];
   for (let i = 0; i < trials.length; i += cfg.blockN) blocks.push(trials.slice(i, i + cfg.blockN));
   let n = 0;
   for (let b = 0; b < blocks.length && !aborted; b++) {
+    Object.assign(PH, { trial: '', level: '', ph: 'msg' });
     await showMsg(`<div><b>${practice ? '연습' : `블록 ${b + 1} / ${blocks.length}`}</b><br>+ 를 계속 보면서 머릿속으로만 푸세요.<br>답은 소리 내어 말하고, 도우미가 화면을 탭합니다.</div>`, '시작');
     if (aborted) break;
-    if (!practice) { await recStart(); beep(); }
-    else t0 = performance.now();
-    $('rec').textContent = practice ? '연습 (녹화 안 함)' : '● REC';
+    const vid = cfg.video && !practice;
+    if (vid) { await recStart(); beep(); } else t0 = performance.now();
+    PH.blk = b + 1; PH.ph = 'adapt';
+    const off = (t0 - sessT0) / 1000;                       // 블록 시각 → 실행 전체 시각
+    $('rec').textContent = vid ? '● REC' : practice ? '연습' : '';
     await showMsg('<div>밝기에 눈을 맞추는 중…</div>'); await sleep(practice || TEST ? 3000 : cfg.fast ? 10000 : 20000); $('msg').hidden = true; $('cross').hidden = false;
 
     for (const tr of blocks[b]) {
       if (aborted) break;
       n++;
+      Object.assign(PH, { trial: n, level: tr.level, ph: 'settle' });
       $('hud').textContent = `${practice ? '연습' : pid} · ${n}/${trials.length}`;
       await sleep(cfg.fast ? 2000 : 3000);                      // 패널이 사라진 뒤 안정
-      const tBase = T();
+      PH.ph = 'base'; const tBase = T();
       await sleep(cfg.base * 1000);                             // 기준선
       if (aborted) break;
+      PH.ph = 'listen';
       let tProb;
       if (cfg.present === 'clip') tProb = (await playClip(tr.q) - t0) / 1000;
       else if (cfg.present === 'tts') tProb = (await speak(speakText(tr.q)) - t0) / 1000;
       else { $('visq').textContent = tr.q; $('visq').hidden = false; tProb = T(); }
-      const tSpeechEnd = T();
+      PH.ph = 'solve'; const tSpeechEnd = T();
       const how = await waitTap(cfg.solve * 1000);
-      const tAns = T();
+      const tAns = T(); PH.ph = 'answer';
       $('visq').hidden = true;
       if (how === 'abort') break;
       const r = await answerPanel(cfg.rest, cfg.fast);
       const correct = answerOf(tr.q);
-      rows.push({
-        pid, practice: practice ? 1 : 0, shade: $('shade').value, order: tr.order || '', block: b + 1, video: practice ? '' : `${pid}_block${b + 1}`,
+      const row = {
+        pid, practice: practice ? 1 : 0, shade: $('shade').value, order: tr.order || '', block: b + 1, video: vid ? `${pid}_block${b + 1}` : '',
         trial: n, level: tr.level, problem: tr.q, correct_answer: correct,
         t_baseline_start: tBase.toFixed(3), t_problem: tProb.toFixed(3), t_speech_end: tSpeechEnd.toFixed(3),
         t_answer: tAns.toFixed(3), rt: (tAns - tProb).toFixed(3), timeout: how === 'timeout' ? 1 : 0,
-        response: r.val, is_correct: r.val === 'O' ? 1 : r.val === 'X' ? 0 : (r.val === '' || r.val === '모름') ? '' : (+r.val === correct ? 1 : 0), rating: r.rate ?? ''
-      });
+        response: r.val, is_correct: r.val === 'O' ? 1 : r.val === 'X' ? 0 : (r.val === '' || r.val === '모름') ? '' : (+r.val === correct ? 1 : 0), rating: r.rate ?? '',
+        _run: run, _blk: b + 1, _off: off, _tb: tBase, _tp: tProb, _ta: tAns
+      };
+      rows.push(Object.assign(row, trialPupil(row)));
     }
-    if (!practice) {
+    if (vid) {
       beep(150, 600);
       await sleep(400);
       const blob = await recStop();
       if (blob) videos.push({ name: `${pid}_block${b + 1}_${stamp()}.${/mp4/.test(blob.type) ? 'mp4' : 'webm'}`, blob });
     }
   }
-  $('rec').textContent = '';
+  logArr = null; PH.ph = '';
   if (rec && rec.state !== 'inactive') { const blob = await recStop(); if (blob) videos.push({ name: `${pid}_중단_${stamp()}.${/mp4/.test(blob.type) ? 'mp4' : 'webm'}`, blob }); }
-  $('run').hidden = true; $('msg').hidden = true; $('panel').hidden = true;
-  try { await document.exitFullscreen?.(); } catch {}
-  try { await wake?.release(); } catch {}
+  await exitStage();
   renderResults();
 }
 $('mode').onchange = e => { const f = e.target.value === 'fast'; $('tBase').value = f ? 3 : 5; $('tSolve').value = f ? 12 : 15; $('tRest').value = f ? 4 : 10; $('blockN').value = f ? 12 : 9; };
@@ -482,10 +874,17 @@ $('start').onclick = () => runExperiment(false);
 $('stop').onclick = () => { aborted = true; speechSynthesis?.cancel(); abortWaiters.forEach(f => f()); };
 
 // ─── 저장 ───
-const COLS = ['pid','practice','shade','order','block','video','trial','level','problem','correct_answer','t_baseline_start','t_problem','t_speech_end','t_answer','rt','timeout','response','is_correct','rating'];
+const COLS = ['pid','practice','shade','order','block','video','trial','level','problem','correct_answer','t_baseline_start','t_problem','t_speech_end','t_answer','rt','timeout','response','is_correct','rating',
+  'pupil_base_px','pupil_resp_px','pupil_peak_px','dil_pct','dil_peak_pct','pupil_valid_pct'];
+const esc = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
 function csvBlob() {
-  const esc = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
   const body = [COLS.join(','), ...rows.map(r => COLS.map(c => esc(r[c] ?? '')).join(','))].join('\n');
+  return new Blob(['﻿' + body], { type: 'text/csv' });
+}
+function rawBlob() {       // t = 블록(영상) 기준 초, ts = 실행 시작부터 초
+  const f = (v, k) => Number.isFinite(v) ? v.toFixed(k) : '';
+  const body = ['pid,practice,block,t,ts,trial,level,phase,pupil_px,x,y',
+    ...samples.map(s => [s.pid, s.practice, s.blk, f(s.t, 3), f(s.ts, 3), s.trial, s.level, s.ph, f(s.d, 2), f(s.x, 1), f(s.y, 1)].map(esc).join(','))].join('\n');
   return new Blob(['﻿' + body], { type: 'text/csv' });
 }
 function save(blob, name) {
@@ -504,18 +903,48 @@ function renderResults() {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = '시험 사진 저장: ' + s.name;
     b.onclick = () => s.canvas.toBlob(bl => save(bl, s.name)); f.appendChild(b);
   });
+  const R = rows.filter(r => r._run === lastRun);
   const t = $('tbl');
-  t.innerHTML = '<tr><th>#</th><th>단계</th><th>문제</th><th>답</th><th>정답</th><th>체감</th><th>풀이(초)</th><th>문제 시각</th></tr>' +
-    rows.map(r => `<tr><td>${r.trial}${r.practice ? '(연습)' : ''}</td><td>${r.level || '-'}</td><td>${r.problem}</td><td>${r.response}</td><td>${r.is_correct === 1 ? '○' : r.is_correct === 0 ? '×' : ''}</td><td>${r.rating}</td><td>${r.rt}</td><td>${r.t_problem}</td></tr>`).join('');
+  const pc = v => v === '' || v == null ? '' : (+v >= 0 ? '+' : '') + (+v).toFixed(1) + '%';
+  t.innerHTML = '<tr><th>#</th><th>단계</th><th>문제</th><th>답</th><th>정답</th><th>풀이(초)</th><th>동공 변화</th><th>최대</th><th>인식률</th></tr>' +
+    R.map(r => `<tr><td>${r.trial}${r.practice ? '(연습)' : ''}</td><td>${r.level || '-'}</td><td>${r.problem}</td><td>${r.response}</td><td>${r.is_correct === 1 ? '○' : r.is_correct === 0 ? '×' : ''}</td><td>${(+r.rt).toFixed(1)}</td><td>${pc(r.dil_pct)}</td><td>${pc(r.dil_peak_pct)}</td><td>${r.pupil_valid_pct === '' ? '' : r.pupil_valid_pct + '%'}</td></tr>`).join('');
+  renderCharts(R);
   $('results').scrollIntoView({ behavior: 'smooth' });
 }
-$('csvBtn').onclick = () => save(csvBlob(), `${$('pid').value.trim() || 'P'}_trials_${stamp()}.csv`);
+function renderCharts(R) {
+  if (!R.length) { $('resHead').textContent = '기록된 문제가 없습니다.'; return; }
+  const lvls = [...new Set(R.map(r => r.level))].sort((a, b) => a - b), name = l => l ? l + '단계' : '연습';
+  const byL = lvls.map(l => ({ l, vals: R.filter(r => r.level === l && r.dil_pct !== '').map(r => +r.dil_pct) }));
+  bars($('chBar'), byL.map(q => ({ label: name(q.l), color: lvc(q.l), vals: q.vals })));
+  const pre = lastCfg.base, post = lastCfg.solve, dt = 0.25, n = Math.round((pre + post) / dt);
+  const series = lvls.map(l => {
+    const cs = R.filter(r => r.level === l).map(r => trialCurve(r, pre, post, dt)).filter(Boolean);
+    return { color: lvc(l), w: 2.2, pts: Array.from({ length: n }, (_, i) => { const v = cs.map(c => c[i]).filter(Number.isFinite); return [-pre + (i + 0.5) * dt, v.length ? mean(v) : NaN]; }) };
+  });
+  $('lgLine').innerHTML = lvls.map(l => `<span><i style="background:${lvc(l)}"></i>${name(l)}</span>`).join('');
+  chart($('chLine'), { h: 200, series, xr: [-pre, post], xs: '초', ys: '%', zero: true, vlines: [0], minSpan: 4, empty: '동공 변화를 계산한 문제가 없습니다' });
+  const S = samples.filter(s => s.run === lastRun), pts = S.map(s => [s.ts, s.d]);
+  chart($('chTime'), { h: 170, xs: '초', minSpan: 4, shades: R.map(r => ({ a: r._off + r._tp, b: r._off + r._ta, color: hexA(lvc(r.level), 0.25) })),
+    series: [{ pts, color: cv('--sub'), dots: true, r: 1.1 }, { pts: smooth(pts, 0.25), color: cv('--accent'), w: 1.6 }] });
+  // 요약 문장
+  const valid = S.length ? Math.round(100 * S.filter(s => s.d === s.d).length / S.length) : 0;
+  const ms = byL.filter(q => q.vals.length).map(q => `${name(q.l)} <b>${(mean(q.vals) >= 0 ? '+' : '') + mean(q.vals).toFixed(1)}%</b>`);
+  const main = byL.filter(q => q.l >= 1 && q.vals.length).map(q => mean(q.vals));
+  const up = main.length >= 3 && main.every((v, i) => !i || v > main[i - 1]);
+  let html = `${R[0].pid} · ${R[0].practice ? '연습' : '본실험'} · ${R.length}문제 · 동공 인식률 ${valid}%<br>` + (ms.length ? '풀이 중 동공 변화: ' + ms.join(' · ') : '동공 변화를 계산하지 못했습니다. 2번에서 인식이 잘 되는지 먼저 확인하세요.');
+  if (main.length >= 3) html += `<br>${up ? '난이도가 오를수록 동공이 커지는 모습입니다 (가설과 같은 방향).' : '단계별로 순서대로 커지지는 않았습니다.'} 한 사람의 문제 몇 개 결과라 우연일 수 있으니, 여러 명의 결과를 모아 비교하세요.`;
+  if (valid && valid < 60) html += '<br>⚠ 인식률이 낮습니다. 폰을 더 가까이, 조명을 조금 밝게, 동공 경계 기준을 조정해 보세요.';
+  $('resHead').innerHTML = html;
+}
+const pidName = () => $('pid').value.trim() || 'P';
+$('csvBtn').onclick = () => save(csvBlob(), `${pidName()}_trials_${stamp()}.csv`);
+$('rawBtn').onclick = () => save(rawBlob(), `${pidName()}_pupil_${stamp()}.csv`);
 $('shareBtn').onclick = async () => {
-  const files = [new File([csvBlob()], `${$('pid').value.trim() || 'P'}_trials.csv`, { type: 'text/csv' }), ...videos.map(v => new File([v.blob], v.name, { type: v.blob.type }))];
+  const files = [new File([csvBlob()], `${pidName()}_trials.csv`, { type: 'text/csv' }), new File([rawBlob()], `${pidName()}_pupil.csv`, { type: 'text/csv' }), ...videos.map(v => new File([v.blob], v.name, { type: v.blob.type }))];
   try { await navigator.share({ files, title: '동공 실험 기록' }); }
   catch (e) { if (e.name !== 'AbortError') alert('공유를 지원하지 않는 브라우저입니다. 저장 버튼을 쓰세요.'); }
 };
-window.addEventListener('beforeunload', e => { if (videos.length || rows.length) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (videos.length || rows.length || samples.length) { e.preventDefault(); e.returnValue = ''; } });
 if (!window.isSecureContext) $('startInfo').textContent = '⚠ https 주소가 아니라서 카메라가 막힙니다. 안내된 https 주소로 여세요.';
 </script>
 </body>
