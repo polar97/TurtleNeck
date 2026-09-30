@@ -92,7 +92,7 @@ th { color: var(--sub); font-weight: 600; }
       <label class="f">순서표<select id="order"><option value="auto">자동 (코드 끝 숫자 홀수=A, 짝수=B)</option><option value="A">순서표 A</option><option value="B">순서표 B (A를 거꾸로)</option></select></label>
       <label class="f">4단계(과부하) 문제<select id="lv4"><option value="0">넣지 않음</option><option value="3">마지막에 3문제</option><option value="6">마지막에 6문제</option></select></label>
       <label class="f">실험 화면 밝기<select id="shade"><option value="gray">중간 회색 (권장)</option><option value="dark">어두운 회색</option><option value="black">검정 (동공이 이미 커서 변화 폭이 줄 수 있음)</option></select></label>
-      <label class="f">문제 제시 방법<select id="present"><option value="voice">소리 (권장: 화면 밝기 일정)</option><option value="screen">화면 글자 (소리가 안 될 때만)</option></select></label>
+      <label class="f">문제 제시 방법<select id="present"><option value="clip">녹음된 음성 (권장)</option><option value="tts">기기 음성 합성(TTS)</option><option value="screen">화면 글자 (소리가 안 될 때만)</option></select></label>
     </div>
     <div class="grid2">
       <label class="f">응시점 보기 = 기준선 (초)<input id="tBase" type="number" min="2" max="15" value="5"></label>
@@ -100,7 +100,9 @@ th { color: var(--sub); font-weight: 600; }
       <label class="f">답 입력 후 쉬기 (초, 최소)<input id="tRest" type="number" min="3" max="60" value="10"></label>
       <label class="f">블록 나누기 (문제 수마다 녹화 파일 분리)<input id="blockN" type="number" min="3" max="30" value="9"></label>
     </div>
+    <label class="row note"><input id="mic" type="checkbox"> 마이크도 함께 녹음 (답 말하는 소리 확인용. 아이폰은 켜면 문제 소리가 작아지거나 안 들릴 수 있음)</label>
     <div class="row"><button id="voiceTest" type="button">소리 테스트: "칠 곱하기 팔"</button><span id="voiceInfo" class="note"></span></div>
+    <p class="note">소리가 안 들리면: 아이폰은 옆면 <b>무음 스위치</b>를 끄고 음량 버튼으로 크게, 블루투스 이어폰 연결 확인.</p>
   </section>
 
   <section class="card" aria-labelledby="h-cam">
@@ -200,7 +202,29 @@ function speak(text) {
     setTimeout(() => res(started ?? performance.now()), 6000);
   });
 }
-$('voiceTest').onclick = () => speak('칠 곱하기 팔');
+// ─── 녹음된 문제 음성 (audio/*.mp3) ───
+const player = new Audio(); player.preload = 'auto';
+const clipUrl = q => 'audio/' + q.replace('×', 'x') + '.mp3';
+function unlockAudio() {           // 탭 순간에 한 번 재생해 두면 이후 자동 재생이 허용된다 (iOS)
+  try { player.muted = true; player.src = 'audio/test.mp3'; const p = player.play(); p && p.then(() => { player.pause(); player.muted = false; }).catch(() => { player.muted = false; }); } catch {}
+}
+function playClip(q) {
+  return new Promise(res => {
+    let started = null, done = false;
+    const fin = () => { if (done) return; done = true; player.onplaying = player.onended = player.onerror = null; res(started ?? performance.now()); };
+    player.muted = false; player.src = clipUrl(q);
+    player.onplaying = () => { started = started ?? performance.now(); };
+    player.onended = fin;
+    player.onerror = () => { speak(speakText(q)).then(t => { started = t; fin(); }); };   // 파일 실패 시 TTS
+    const p = player.play(); p && p.catch(() => speak(speakText(q)).then(t => { started = t; fin(); }));
+    setTimeout(fin, 7000);
+  });
+}
+$('voiceTest').onclick = () => {
+  if ($('present').value === 'tts') return speak('칠 곱하기 팔');
+  player.muted = false; player.src = 'audio/test.mp3';
+  player.play().then(() => { $('voiceInfo').textContent = '녹음 음성 재생 중'; }).catch(e => { $('voiceInfo').textContent = '재생 실패: ' + e.name; });
+};
 
 // ─── 카메라 ───
 let stream = null, track = null;
@@ -211,7 +235,7 @@ async function camOn() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: $('facing').value, width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: 30 } },
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      audio: $('mic').checked ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false
     });
   } catch (e) {
     $('camInfo').textContent = e.name === 'NotFoundError' ? '이 기기에서 카메라를 찾지 못했습니다.' : '카메라를 켜지 못했습니다(' + e.name + '). 브라우저 주소창의 권한 설정에서 카메라·마이크를 허용하세요.'; return;
@@ -251,7 +275,9 @@ const shots = [];
 
 // ─── 녹화 ───
 function pickMime() {
-  const c = ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  const c = stream && stream.getAudioTracks().length
+    ? ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+    : ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
   return c.find(m => window.MediaRecorder?.isTypeSupported?.(m)) || '';
 }
 let rec = null, chunks = [], t0 = 0;
@@ -369,7 +395,7 @@ async function runExperiment(practice) {
   const cfg = { base: +$('tBase').value, solve: +$('tSolve').value, rest: +$('tRest').value, blockN: +$('blockN').value, present: $('present').value };
   const pid = $('pid').value.trim() || 'P';
   aborted = false; abortWaiters = [];
-  speak(' ');                               // 아이폰: 첫 탭에서 음성 잠금 해제
+  if (cfg.present === 'tts') speak(' '); else if (cfg.present === 'clip') unlockAudio();   // 첫 탭에서 소리 잠금 해제
   try { wake = await navigator.wakeLock?.request('screen'); } catch {}
   $('run').hidden = false; stageLayout(); $('cross').hidden = true;
   try { await document.documentElement.requestFullscreen?.(); } catch {}
@@ -395,7 +421,8 @@ async function runExperiment(practice) {
       await sleep(cfg.base * 1000);                             // 기준선
       if (aborted) break;
       let tProb;
-      if (cfg.present === 'voice') tProb = (await speak(speakText(tr.q)) - t0) / 1000;
+      if (cfg.present === 'clip') tProb = (await playClip(tr.q) - t0) / 1000;
+      else if (cfg.present === 'tts') tProb = (await speak(speakText(tr.q)) - t0) / 1000;
       else { $('visq').textContent = tr.q; $('visq').hidden = false; tProb = T(); }
       const tSpeechEnd = T();
       const how = await waitTap(cfg.solve * 1000);
