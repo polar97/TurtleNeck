@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#7f7f7f">
+<title>동공 인지부하 실험</title>
+<style>
+/* 설정 화면: 실험 노트 느낌의 차분한 청회색. 실험 화면: 테마와 무관한 고정 회색(밝기 통제) */
+:root {
+  --bg: #f3f5f7; --panel: #ffffff; --fg: #17202a; --sub: #5a6776; --line: #d6dde5;
+  --accent: #1f5fa8; --accent-fg: #ffffff; --ok: #1d7a55; --warn: #b4531a; --bad: #b3261e;
+  --stage: #7f7f7f; --stage-ink: #2b2b2b; --stage-key: #737373; --stage-key-ink: #1e1e1e;
+  --font: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11161c; --panel: #19212a; --fg: #e6edf3; --sub: #9aa8b6; --line: #2c3845;
+  --accent: #6aa5e8; --accent-fg: #0b1420; --ok: #5cc596; --warn: #e3a05e; --bad: #f08a80; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11161c; --panel: #19212a; --fg: #e6edf3; --sub: #9aa8b6; --line: #2c3845;
+  --accent: #6aa5e8; --accent-fg: #0b1420; --ok: #5cc596; --warn: #e3a05e; --bad: #f08a80; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 40px; display: grid; gap: 14px; }
+h1 { font-size: 1.45rem; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-size: 1.02rem; margin: 0 0 8px; }
+.lead { color: var(--sub); margin: 2px 0 0; font-size: .92rem; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+label.f { display: grid; gap: 4px; font-size: .86rem; color: var(--sub); }
+input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; width: 100%; }
+input[type=checkbox] { width: auto; }
+button { font: inherit; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 9px 14px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.note { font-size: .84rem; color: var(--sub); }
+.pill { display: inline-block; font-size: .78rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--sub); }
+.pill.ok { color: var(--ok); border-color: currentColor; } .pill.warn { color: var(--warn); border-color: currentColor; } .pill.bad { color: var(--bad); border-color: currentColor; }
+.cam { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 3; max-width: 100%; }
+.cam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.cam.back video { transform: none; }
+.cam .guide { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; }
+.cam .guide span { width: 46%; aspect-ratio: 2 / 1; border: 2px dashed rgba(255,255,255,.75); border-radius: 50%; }
+.cam .guide b { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; color: #fff; font-size: .78rem; font-weight: 500; text-shadow: 0 1px 2px #000; }
+.snap { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.snap canvas { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #000; }
+ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: .9rem; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .84rem; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: center; white-space: nowrap; }
+th { color: var(--sub); font-weight: 600; }
+.kv { font-family: var(--mono); font-size: .8rem; color: var(--sub); overflow-wrap: anywhere; }
+
+/* ── 실험 화면: 고정 회색, 테마 무시 ── */
+#run { position: fixed; inset: 0; background: var(--stage); color: var(--stage-ink); z-index: 10; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+#cross { position: absolute; left: 50%; transform: translateX(-50%); font: 300 44px/1 var(--font); color: var(--stage-ink); }
+#hud { position: absolute; left: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: #5f5f5f; font-family: var(--mono); }
+#rec { position: absolute; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: #6b3a3a; font-family: var(--mono); }
+#stop { position: absolute; right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); background: transparent; border: 1px solid #6c6c6c; color: #4a4a4a; font-size: 12px; padding: 4px 8px; }
+#visq { position: absolute; left: 0; right: 0; text-align: center; font: 600 28px var(--font); color: #454545; }
+#panel { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: min(420px, calc(100% - 24px)); display: grid; gap: 8px; color: var(--stage-key-ink); }
+#panel .ans { font: 600 26px var(--mono); text-align: center; min-height: 34px; }
+#panel .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#panel button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid #686868; font-size: 20px; padding: 10px 0; border-radius: 8px; }
+#panel .rate { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+#panel .rate button { font-size: 16px; padding: 8px 0; }
+#panel .rate button.on { background: #5e5e5e; color: #e8e8e8; }
+#panel .lbl { font-size: 13px; display: flex; justify-content: space-between; color: #333; }
+#panel .next { font-size: 17px; }
+#msg { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); text-align: center; color: #262626; font-size: 17px; display: grid; gap: 12px; }
+#msg button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid #686868; font-size: 17px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<main id="setup" class="wrap">
+  <header>
+    <h1>동공 인지부하 실험</h1>
+    <p class="lead">암산 문제를 소리로 들려주고, 푸는 동안 눈을 녹화합니다. 영상과 시행 기록(CSV)은 이 폰 안에만 저장되고 어디로도 전송되지 않습니다.</p>
+  </header>
+
+  <section class="card" aria-labelledby="h-who">
+    <h2 id="h-who">1. 참가자와 순서</h2>
+    <div class="grid2">
+      <label class="f">참가자 코드 (이름 대신)<input id="pid" value="A01" autocomplete="off"></label>
+      <label class="f">순서표<select id="order"><option value="auto">자동 (코드 끝 숫자 홀수=A, 짝수=B)</option><option value="A">순서표 A</option><option value="B">순서표 B (A를 거꾸로)</option></select></label>
+      <label class="f">4단계(과부하) 문제<select id="lv4"><option value="0">넣지 않음</option><option value="3">마지막에 3문제</option><option value="6">마지막에 6문제</option></select></label>
+      <label class="f">문제 제시 방법<select id="present"><option value="voice">소리 (권장: 화면 밝기 일정)</option><option value="screen">화면 글자 (소리가 안 될 때만)</option></select></label>
+    </div>
+    <div class="grid2">
+      <label class="f">응시점 보기 = 기준선 (초)<input id="tBase" type="number" min="2" max="15" value="5"></label>
+      <label class="f">풀이 최대 시간 (초)<input id="tSolve" type="number" min="5" max="60" value="15"></label>
+      <label class="f">답 입력 후 쉬기 (초, 최소)<input id="tRest" type="number" min="3" max="60" value="10"></label>
+      <label class="f">블록 나누기 (문제 수마다 녹화 파일 분리)<input id="blockN" type="number" min="3" max="30" value="9"></label>
+    </div>
+    <div class="row"><button id="voiceTest" type="button">소리 테스트: "칠 곱하기 팔"</button><span id="voiceInfo" class="note"></span></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-cam">
+    <h2 id="h-cam">2. 카메라 맞추기</h2>
+    <div class="grid2">
+      <label class="f">카메라<select id="facing"><option value="user">전면 (폰 화면의 응시점을 보며 촬영, 권장)</option><option value="environment">후면 (화질 좋음, 응시점은 따로 준비)</option></select></label>
+      <label class="f">화질<select id="res"><option value="1080">1080p (권장)</option><option value="2160">4K (파일이 매우 큼)</option><option value="720">720p</option></select></label>
+    </div>
+    <div class="row"><button id="camOn" type="button" class="primary">카메라 켜기</button><button id="lock" type="button" disabled>노출·초점 고정</button><button id="shot" type="button" disabled>시험 사진 찍기</button></div>
+    <div class="row" id="zoomRow" hidden><label class="f" style="flex:1">확대(줌) <input id="zoom" type="range" min="1" max="1" step="0.1" value="1"></label></div>
+    <div id="camBox" class="cam" hidden><video id="preview" playsinline muted></video><div class="guide"><span></span><b>눈이 점선 안에 크게 들어오게 폰 거리를 맞추세요</b></div></div>
+    <p id="camInfo" class="kv"></p>
+    <div id="snapBox" class="snap" hidden></div>
+    <p class="note">시험 사진에서 <b>검은 동공과 갈색 홍채의 경계</b>가 보여야 합니다. 경계가 안 보이면 조명을 조금 밝히거나 630 nm 빨간 필터를 렌즈에 대 보세요. 사진의 흰 반사점이 동공을 가리면 조명 위치를 옮기세요.</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-go">
+    <h2 id="h-go">3. 실험 전 확인</h2>
+    <ol class="steps">
+      <li>방 조명 고정, 커튼 닫기. 폰 <b>자동 밝기 끄고</b> 밝기를 중간쯤으로 고정</li>
+      <li>폰을 거치대에 고정, 턱받침으로 머리 고정 (눈–폰 거리 매번 같게)</li>
+      <li>무음 모드 해제, 소리 크기 확인. 알림 끄기 (방해 금지 모드)</li>
+      <li>참가자에게: "화면의 + 를 계속 보면서 머릿속으로만 풀고, 답을 소리 내어 말하세요"</li>
+      <li>도우미는 참가자가 <b>답을 말하는 순간 화면을 한 번 탭</b>합니다</li>
+    </ol>
+    <div class="row"><button id="practice" type="button">연습 2문제</button><button id="start" type="button" class="primary">실험 시작 (녹화)</button></div>
+    <p id="startInfo" class="note"></p>
+  </section>
+
+  <section class="card" id="results" hidden aria-labelledby="h-res">
+    <h2 id="h-res">4. 저장</h2>
+    <p class="note">블록마다 영상 1개가 생깁니다. 영상의 시간(초)과 CSV의 시각이 같은 기준이라, CSV의 <b>t_problem</b> 시각을 영상에서 찾아가면 됩니다. 페이지를 닫기 전에 꼭 저장하세요.</p>
+    <div id="files" class="grid2"></div>
+    <div class="row"><button id="csvBtn" type="button" class="primary">기록 CSV 저장</button><button id="shareBtn" type="button">파일 공유(폰)</button></div>
+    <div class="tbl"><table id="tbl"></table></div>
+  </section>
+</main>
+
+<div id="run" hidden>
+  <div id="cross">+</div>
+  <div id="visq" hidden></div>
+  <div id="msg" hidden></div>
+  <div id="panel" hidden>
+    <div class="lbl"><span>들은 답 입력 (도우미)</span><span id="restLeft"></span></div>
+    <div class="ans" id="ansView">&nbsp;</div>
+    <div class="keys" id="keys"></div>
+    <div class="lbl"><span>체감 난이도 (참가자)</span><span>1 매우 쉬움 · 7 매우 어려움</span></div>
+    <div class="rate" id="rate"></div>
+    <button class="next" id="nextBtn" type="button" disabled>다음 문제</button>
+  </div>
+  <div id="hud"></div>
+  <div id="rec"></div>
+  <button id="stop" type="button">중단</button>
+</div>
+
+<script>
+'use strict';
+// ─── 문제 (활동지 순서표 A와 동일) ───
+const ORDER_A = [[2,'24×6'],[2,'17×8'],[1,'6×8'],[3,'18×25'],[1,'7×8'],[1,'9×7'],[3,'16×23'],[2,'13×7'],[3,'32×17'],[2,'19×6'],[3,'14×27'],[2,'38×4'],[3,'21×34'],[1,'8×4'],[1,'6×9'],[2,'26×7'],[1,'4×7'],[3,'23×19']];
+const LV4 = ['124×37','213×48','152×36','317×24','146×53','238×17'];
+const PRACTICE = [[0,'3×4'],[0,'12×5']];
+const $ = id => document.getElementById(id);
+const answerOf = q => q.split('×').map(Number).reduce((a, b) => a * b);
+
+// 한자어 수 읽기: 16 → 십육, 124 → 백이십사
+function korNum(n) {
+  if (n === 0) return '영';
+  const d = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'], u = ['', '십', '백', '천'];
+  let s = '', str = String(n);
+  for (let i = 0; i < str.length; i++) {
+    const v = +str[i], p = str.length - 1 - i;
+    if (!v) continue;
+    s += (v === 1 && p > 0 ? '' : d[v]) + u[p];
+  }
+  return s;
+}
+const speakText = q => q.split('×').map(x => korNum(+x)).join(' 곱하기 ');
+
+// ─── 음성 ───
+let koVoice = null;
+function pickVoice() {
+  const vs = speechSynthesis.getVoices();
+  koVoice = vs.find(v => /ko(-|_)KR/i.test(v.lang)) || vs.find(v => /^ko/i.test(v.lang)) || null;
+  $('voiceInfo').textContent = koVoice ? '한국어 음성: ' + koVoice.name : (vs.length ? '한국어 음성이 없습니다. 기기 설정에서 한국어 TTS를 설치하거나 "화면 글자"를 쓰세요.' : '');
+}
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function speak(text) {
+  return new Promise(res => {
+    if (!('speechSynthesis' in window)) return res(performance.now());
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ko-KR'; if (koVoice) u.voice = koVoice; u.rate = 0.95;
+    let started = null;
+    u.onstart = () => { started = performance.now(); };
+    u.onend = () => res(started ?? performance.now());
+    u.onerror = () => res(started ?? performance.now());
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+    setTimeout(() => res(started ?? performance.now()), 6000);
+  });
+}
+$('voiceTest').onclick = () => speak('칠 곱하기 팔');
+
+// ─── 카메라 ───
+let stream = null, track = null;
+async function camOn() {
+  if (!navigator.mediaDevices?.getUserMedia) { $('camInfo').textContent = '이 브라우저는 카메라를 쓸 수 없습니다. https 주소에서 Chrome(안드로이드) 또는 Safari(아이폰)로 여세요.'; return; }
+  stream?.getTracks().forEach(t => t.stop());
+  const h = +$('res').value, w = Math.round(h * 16 / 9);
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: $('facing').value, width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: 30 } },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    $('camInfo').textContent = e.name === 'NotFoundError' ? '이 기기에서 카메라를 찾지 못했습니다.' : '카메라를 켜지 못했습니다(' + e.name + '). 브라우저 주소창의 권한 설정에서 카메라·마이크를 허용하세요.'; return;
+  }
+  track = stream.getVideoTracks()[0];
+  const v = $('preview'); v.srcObject = stream; await v.play().catch(() => {});
+  $('camBox').hidden = false; $('camBox').classList.toggle('back', $('facing').value === 'environment');
+  $('lock').disabled = false; $('shot').disabled = false;
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  if (caps.zoom) { const z = $('zoom'); z.min = caps.zoom.min; z.max = caps.zoom.max; z.step = caps.zoom.step || 0.1; z.value = track.getSettings().zoom || caps.zoom.min; $('zoomRow').hidden = false; }
+  camInfoUpdate();
+}
+function camInfoUpdate(extra = '') {
+  const s = track.getSettings();
+  $('camInfo').textContent = `실제 해상도 ${s.width}×${s.height} · ${Math.round(s.frameRate || 0)}fps` + (s.zoom ? ` · 줌 ${(+s.zoom).toFixed(1)}` : '') + (extra ? ' · ' + extra : '');
+}
+$('camOn').onclick = camOn;
+$('zoom').oninput = e => track?.applyConstraints({ advanced: [{ zoom: +e.target.value }] }).then(() => camInfoUpdate()).catch(() => {});
+$('lock').onclick = async () => {
+  const caps = track.getCapabilities ? track.getCapabilities() : {}, adv = [], done = [];
+  if (caps.exposureMode?.includes('manual')) { adv.push({ exposureMode: 'manual' }); done.push('노출'); }
+  if (caps.focusMode?.includes('manual')) { adv.push({ focusMode: 'manual' }); done.push('초점'); }
+  if (caps.whiteBalanceMode?.includes('manual')) { adv.push({ whiteBalanceMode: 'manual' }); done.push('화이트밸런스'); }
+  if (!adv.length) { camInfoUpdate('이 기기·브라우저는 노출 고정을 지원하지 않습니다 (동공/홍채 비율로 재면 괜찮습니다)'); return; }
+  try { await track.applyConstraints({ advanced: adv }); camInfoUpdate(done.join('·') + ' 고정됨'); }
+  catch { camInfoUpdate('고정 실패 (동공/홍채 비율로 재면 괜찮습니다)'); }
+};
+$('shot').onclick = () => {
+  const v = $('preview'), c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+  const z = document.createElement('canvas'), cw = c.width * 0.46, ch = cw / 2;   // 점선 영역 확대
+  z.width = cw; z.height = ch; z.getContext('2d').drawImage(c, (c.width - cw) / 2, (c.height - ch) / 2, cw, ch, 0, 0, cw, ch);
+  const box = $('snapBox'); box.hidden = false; box.replaceChildren(c, z);
+  shots.push({ name: 'test_' + stamp() + '.png', canvas: c });
+};
+const shots = [];
+
+// ─── 녹화 ───
+function pickMime() {
+  const c = ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return c.find(m => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+}
+let rec = null, chunks = [], t0 = 0;
+function recStart() {
+  return new Promise((res, rej) => {
+    const mime = pickMime(), h = track.getSettings().height || 1080;
+    const bps = h >= 2000 ? 20e6 : h >= 1000 ? 8e6 : 4e6;
+    try { rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: bps } : { videoBitsPerSecond: bps }); }
+    catch (e) { return rej(e); }
+    chunks = [];
+    rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+    rec.start(1000);
+    t0 = performance.now();                 // 녹화 시작 기준 시각 (영상 0초)
+    res();
+  });
+}
+function recStop() {
+  return new Promise(res => {
+    if (!rec || rec.state === 'inactive') return res(null);
+    rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+    rec.stop();
+  });
+}
+const T = () => ((performance.now() - t0) / 1000);
+
+// 시작 표시음 (영상 소리로 동기 확인용)
+let actx = null;
+function beep(ms = 150, f = 1000) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = f; g.gain.value = 0.25; o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + ms / 1000);
+  } catch {}
+}
+
+// ─── 실험 진행 ───
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const TEST = location.hash === '#test';   // 개발용: 적응 시간 단축
+let rows = [], videos = [], aborted = false, wake = null;
+const stamp = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`; };
+
+function buildTrials(practice) {
+  if (practice) return PRACTICE.map(([l, q]) => ({ level: l, q }));
+  let ord = $('order').value;
+  if (ord === 'auto') { const n = +(($('pid').value.match(/\d+$/) || ['1'])[0]); ord = n % 2 ? 'A' : 'B'; }
+  const base = ord === 'A' ? ORDER_A : [...ORDER_A].reverse();
+  const t = base.map(([l, q]) => ({ level: l, q, order: ord }));
+  LV4.slice(0, +$('lv4').value).forEach(q => t.push({ level: 4, q, order: ord }));
+  return t;
+}
+
+function stageLayout() {   // 응시점은 전면 카메라 가까이(화면 위쪽)에 두어 시선 각도를 줄인다
+  const top = $('facing').value === 'user' ? 14 : 45;
+  $('cross').style.top = top + '%';
+  $('visq').style.top = `calc(${top}% + 56px)`;
+}
+
+function waitTap(ms) {
+  return new Promise(res => {
+    const run = $('run'); let done = false;
+    const fin = how => { if (done) return; done = true; run.removeEventListener('pointerdown', onTap); document.removeEventListener('keydown', onKey); clearTimeout(tm); res(how); };
+    const onTap = e => { if (e.target.closest('#stop')) return; fin('tap'); };
+    const onKey = e => { if (e.key === ' ' || e.key === 'Enter') fin('tap'); };
+    const tm = setTimeout(() => fin('timeout'), ms);
+    run.addEventListener('pointerdown', onTap); document.addEventListener('keydown', onKey);
+    abortWaiters.push(() => fin('abort'));
+  });
+}
+let abortWaiters = [];
+
+function answerPanel(restSec) {
+  return new Promise(res => {
+    let val = '', rate = null, left = restSec;
+    const p = $('panel'), keys = $('keys'), rt = $('rate'), next = $('nextBtn');
+    const view = () => { $('ansView').textContent = val || ' '; next.disabled = left > 0; $('restLeft').textContent = left > 0 ? `쉬는 중 ${left}초` : ''; };
+    keys.replaceChildren(...['1','2','3','4','5','6','7','8','9','모름','0','⌫'].map(k => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = k;
+      b.onclick = () => { if (k === '⌫') val = val.slice(0, -1); else if (k === '모름') val = '모름'; else val = (val === '모름' ? '' : val) + k; view(); };
+      return b;
+    }));
+    rt.replaceChildren(...[1,2,3,4,5,6,7].map(n => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = n;
+      b.onclick = () => { rate = n; [...rt.children].forEach(x => x.classList.toggle('on', x === b)); };
+      return b;
+    }));
+    p.hidden = false; view();
+    const iv = setInterval(() => { left--; view(); if (left <= 0) clearInterval(iv); }, 1000);
+    next.onclick = () => { clearInterval(iv); p.hidden = true; res({ val, rate }); };
+    abortWaiters.push(() => { clearInterval(iv); p.hidden = true; res({ val, rate }); });
+  });
+}
+
+function showMsg(html, btnText) {
+  return new Promise(res => {
+    const m = $('msg'); m.innerHTML = html; m.hidden = false; $('cross').hidden = true;
+    if (!btnText) return res();
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = btnText; m.appendChild(b);
+    b.onclick = () => { m.hidden = true; $('cross').hidden = false; res(); };
+    abortWaiters.push(() => { m.hidden = true; res(); });
+  });
+}
+
+async function runExperiment(practice) {
+  if (!stream) { $('startInfo').textContent = '먼저 2번에서 카메라를 켜세요.'; return; }
+  const trials = buildTrials(practice);
+  const cfg = { base: +$('tBase').value, solve: +$('tSolve').value, rest: +$('tRest').value, blockN: +$('blockN').value, present: $('present').value };
+  const pid = $('pid').value.trim() || 'P';
+  aborted = false; abortWaiters = [];
+  speak(' ');                               // 아이폰: 첫 탭에서 음성 잠금 해제
+  try { wake = await navigator.wakeLock?.request('screen'); } catch {}
+  $('run').hidden = false; stageLayout(); $('cross').hidden = true;
+  try { await document.documentElement.requestFullscreen?.(); } catch {}
+  if (!practice) rows = rows.filter(r => r.pid !== pid);
+
+  const blocks = [];
+  for (let i = 0; i < trials.length; i += cfg.blockN) blocks.push(trials.slice(i, i + cfg.blockN));
+  let n = 0;
+  for (let b = 0; b < blocks.length && !aborted; b++) {
+    await showMsg(`<div><b>${practice ? '연습' : `블록 ${b + 1} / ${blocks.length}`}</b><br>+ 를 계속 보면서 머릿속으로만 푸세요.<br>답은 소리 내어 말하고, 도우미가 화면을 탭합니다.</div>`, '시작');
+    if (aborted) break;
+    if (!practice) { await recStart(); beep(); }
+    else t0 = performance.now();
+    $('rec').textContent = practice ? '연습 (녹화 안 함)' : '● REC';
+    await showMsg('<div>밝기에 눈을 맞추는 중… (20초)</div>'); await sleep(practice || TEST ? 3000 : 20000); $('msg').hidden = true; $('cross').hidden = false;
+
+    for (const tr of blocks[b]) {
+      if (aborted) break;
+      n++;
+      $('hud').textContent = `${practice ? '연습' : pid} · ${n}/${trials.length}`;
+      await sleep(3000);                                        // 패널이 사라진 뒤 안정
+      const tBase = T();
+      await sleep(cfg.base * 1000);                             // 기준선
+      if (aborted) break;
+      let tProb;
+      if (cfg.present === 'voice') tProb = (await speak(speakText(tr.q)) - t0) / 1000;
+      else { $('visq').textContent = tr.q; $('visq').hidden = false; tProb = T(); }
+      const tSpeechEnd = T();
+      const how = await waitTap(cfg.solve * 1000);
+      const tAns = T();
+      $('visq').hidden = true;
+      if (how === 'abort') break;
+      const r = await answerPanel(cfg.rest);
+      const correct = answerOf(tr.q);
+      rows.push({
+        pid, practice: practice ? 1 : 0, order: tr.order || '', block: b + 1, video: practice ? '' : `${pid}_block${b + 1}`,
+        trial: n, level: tr.level, problem: tr.q, correct_answer: correct,
+        t_baseline_start: tBase.toFixed(3), t_problem: tProb.toFixed(3), t_speech_end: tSpeechEnd.toFixed(3),
+        t_answer: tAns.toFixed(3), rt: (tAns - tProb).toFixed(3), timeout: how === 'timeout' ? 1 : 0,
+        response: r.val, is_correct: r.val === '' ? '' : (+r.val === correct ? 1 : 0), rating: r.rate ?? ''
+      });
+    }
+    if (!practice) {
+      beep(150, 600);
+      await sleep(400);
+      const blob = await recStop();
+      if (blob) videos.push({ name: `${pid}_block${b + 1}_${stamp()}.${/mp4/.test(blob.type) ? 'mp4' : 'webm'}`, blob });
+    }
+  }
+  $('rec').textContent = '';
+  if (rec && rec.state !== 'inactive') { const blob = await recStop(); if (blob) videos.push({ name: `${pid}_중단_${stamp()}.${/mp4/.test(blob.type) ? 'mp4' : 'webm'}`, blob }); }
+  $('run').hidden = true; $('msg').hidden = true; $('panel').hidden = true;
+  try { await document.exitFullscreen?.(); } catch {}
+  try { await wake?.release(); } catch {}
+  renderResults();
+}
+$('practice').onclick = () => runExperiment(true);
+$('start').onclick = () => runExperiment(false);
+$('stop').onclick = () => { aborted = true; speechSynthesis?.cancel(); abortWaiters.forEach(f => f()); };
+
+// ─── 저장 ───
+const COLS = ['pid','practice','order','block','video','trial','level','problem','correct_answer','t_baseline_start','t_problem','t_speech_end','t_answer','rt','timeout','response','is_correct','rating'];
+function csvBlob() {
+  const esc = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  const body = [COLS.join(','), ...rows.map(r => COLS.map(c => esc(r[c] ?? '')).join(','))].join('\n');
+  return new Blob(['﻿' + body], { type: 'text/csv' });
+}
+function save(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+function renderResults() {
+  $('results').hidden = false;
+  const f = $('files'); f.replaceChildren();
+  videos.forEach(v => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.textContent = `영상 저장: ${v.name} (${(v.blob.size / 1048576).toFixed(0)} MB)`;
+    b.onclick = () => save(v.blob, v.name); f.appendChild(b);
+  });
+  shots.forEach(s => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = '시험 사진 저장: ' + s.name;
+    b.onclick = () => s.canvas.toBlob(bl => save(bl, s.name)); f.appendChild(b);
+  });
+  const t = $('tbl');
+  t.innerHTML = '<tr><th>#</th><th>단계</th><th>문제</th><th>답</th><th>정답</th><th>체감</th><th>풀이(초)</th><th>문제 시각</th></tr>' +
+    rows.map(r => `<tr><td>${r.trial}${r.practice ? '(연습)' : ''}</td><td>${r.level || '-'}</td><td>${r.problem}</td><td>${r.response}</td><td>${r.is_correct === 1 ? '○' : r.is_correct === 0 ? '×' : ''}</td><td>${r.rating}</td><td>${r.rt}</td><td>${r.t_problem}</td></tr>`).join('');
+  $('results').scrollIntoView({ behavior: 'smooth' });
+}
+$('csvBtn').onclick = () => save(csvBlob(), `${$('pid').value.trim() || 'P'}_trials_${stamp()}.csv`);
+$('shareBtn').onclick = async () => {
+  const files = [new File([csvBlob()], `${$('pid').value.trim() || 'P'}_trials.csv`, { type: 'text/csv' }), ...videos.map(v => new File([v.blob], v.name, { type: v.blob.type }))];
+  try { await navigator.share({ files, title: '동공 실험 기록' }); }
+  catch (e) { if (e.name !== 'AbortError') alert('공유를 지원하지 않는 브라우저입니다. 저장 버튼을 쓰세요.'); }
+};
+window.addEventListener('beforeunload', e => { if (videos.length || rows.length) { e.preventDefault(); e.returnValue = ''; } });
+if (!window.isSecureContext) $('startInfo').textContent = '⚠ https 주소가 아니라서 카메라가 막힙니다. 안내된 https 주소로 여세요.';
+</script>
+</body>
+</html>
