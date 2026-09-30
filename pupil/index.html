@@ -10,7 +10,7 @@
 :root {
   --bg: #f3f5f7; --panel: #ffffff; --fg: #17202a; --sub: #5a6776; --line: #d6dde5;
   --accent: #1f5fa8; --accent-fg: #ffffff; --ok: #1d7a55; --warn: #b4531a; --bad: #b3261e;
-  --stage: #7f7f7f; --stage-ink: #2b2b2b; --stage-key: #737373; --stage-key-ink: #1e1e1e;
+  --stage: #7f7f7f; --stage-ink: #2b2b2b; --stage-key: #737373; --stage-key-ink: #1e1e1e; --stage-sub: #333333;
   --font: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
   --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
@@ -59,21 +59,21 @@ th { color: var(--sub); font-weight: 600; }
 /* ── 실험 화면: 고정 회색, 테마 무시 ── */
 #run { position: fixed; inset: 0; background: var(--stage); color: var(--stage-ink); z-index: 10; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 #cross { position: absolute; left: 50%; transform: translateX(-50%); font: 300 44px/1 var(--font); color: var(--stage-ink); }
-#hud { position: absolute; left: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: #5f5f5f; font-family: var(--mono); }
+#hud { position: absolute; left: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--stage-sub); font-family: var(--mono); }
 #rec { position: absolute; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: #6b3a3a; font-family: var(--mono); }
-#stop { position: absolute; right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); background: transparent; border: 1px solid #6c6c6c; color: #4a4a4a; font-size: 12px; padding: 4px 8px; }
-#visq { position: absolute; left: 0; right: 0; text-align: center; font: 600 28px var(--font); color: #454545; }
+#stop { position: absolute; right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); background: transparent; border: 1px solid var(--stage-sub); color: var(--stage-sub); font-size: 12px; padding: 4px 8px; }
+#visq { position: absolute; left: 0; right: 0; text-align: center; font: 600 28px var(--font); color: var(--stage-ink); }
 #panel { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: min(420px, calc(100% - 24px)); display: grid; gap: 8px; color: var(--stage-key-ink); }
 #panel .ans { font: 600 26px var(--mono); text-align: center; min-height: 34px; }
 #panel .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-#panel button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid #686868; font-size: 20px; padding: 10px 0; border-radius: 8px; }
+#panel button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid var(--stage-sub); font-size: 20px; padding: 10px 0; border-radius: 8px; }
 #panel .rate { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 #panel .rate button { font-size: 16px; padding: 8px 0; }
-#panel .rate button.on { background: #5e5e5e; color: #e8e8e8; }
-#panel .lbl { font-size: 13px; display: flex; justify-content: space-between; color: #333; }
+#panel .rate button.on { background: var(--stage-ink); color: var(--stage); }
+#panel .lbl { font-size: 13px; display: flex; justify-content: space-between; color: var(--stage-sub); }
 #panel .next { font-size: 17px; }
-#msg { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); text-align: center; color: #262626; font-size: 17px; display: grid; gap: 12px; }
-#msg button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid #686868; font-size: 17px; }
+#msg { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); text-align: center; color: var(--stage-ink); font-size: 17px; display: grid; gap: 12px; }
+#msg button { background: var(--stage-key); color: var(--stage-key-ink); border: 1px solid var(--stage-sub); font-size: 17px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -91,6 +91,7 @@ th { color: var(--sub); font-weight: 600; }
       <label class="f">참가자 코드 (이름 대신)<input id="pid" value="A01" autocomplete="off"></label>
       <label class="f">순서표<select id="order"><option value="auto">자동 (코드 끝 숫자 홀수=A, 짝수=B)</option><option value="A">순서표 A</option><option value="B">순서표 B (A를 거꾸로)</option></select></label>
       <label class="f">4단계(과부하) 문제<select id="lv4"><option value="0">넣지 않음</option><option value="3">마지막에 3문제</option><option value="6">마지막에 6문제</option></select></label>
+      <label class="f">실험 화면 밝기<select id="shade"><option value="gray">중간 회색 (권장)</option><option value="dark">어두운 회색</option><option value="black">검정 (동공이 이미 커서 변화 폭이 줄 수 있음)</option></select></label>
       <label class="f">문제 제시 방법<select id="present"><option value="voice">소리 (권장: 화면 밝기 일정)</option><option value="screen">화면 글자 (소리가 안 될 때만)</option></select></label>
     </div>
     <div class="grid2">
@@ -303,7 +304,15 @@ function buildTrials(practice) {
   return t;
 }
 
-function stageLayout() {   // 응시점은 전면 카메라 가까이(화면 위쪽)에 두어 시선 각도를 줄인다
+const SHADES = {   // 배경, 글자(+), 버튼, 버튼 글자, 보조 글자
+  gray:  ['#7f7f7f', '#2b2b2b', '#737373', '#1e1e1e', '#333333'],
+  dark:  ['#3a3a3a', '#8a8a8a', '#444444', '#9a9a9a', '#7a7a7a'],
+  black: ['#000000', '#5a5a5a', '#111111', '#6a6a6a', '#555555']
+};
+function stageLayout() {
+  const [bg, ink, key, keyInk, sub] = SHADES[$('shade').value] || SHADES.gray, run = $('run');
+  run.style.setProperty('--stage', bg); run.style.setProperty('--stage-ink', ink);
+  run.style.setProperty('--stage-key', key); run.style.setProperty('--stage-key-ink', keyInk); run.style.setProperty('--stage-sub', sub);   // 응시점은 전면 카메라 가까이(화면 위쪽)에 두어 시선 각도를 줄인다
   const top = $('facing').value === 'user' ? 14 : 45;
   $('cross').style.top = top + '%';
   $('visq').style.top = `calc(${top}% + 56px)`;
@@ -396,7 +405,7 @@ async function runExperiment(practice) {
       const r = await answerPanel(cfg.rest);
       const correct = answerOf(tr.q);
       rows.push({
-        pid, practice: practice ? 1 : 0, order: tr.order || '', block: b + 1, video: practice ? '' : `${pid}_block${b + 1}`,
+        pid, practice: practice ? 1 : 0, shade: $('shade').value, order: tr.order || '', block: b + 1, video: practice ? '' : `${pid}_block${b + 1}`,
         trial: n, level: tr.level, problem: tr.q, correct_answer: correct,
         t_baseline_start: tBase.toFixed(3), t_problem: tProb.toFixed(3), t_speech_end: tSpeechEnd.toFixed(3),
         t_answer: tAns.toFixed(3), rt: (tAns - tProb).toFixed(3), timeout: how === 'timeout' ? 1 : 0,
@@ -422,7 +431,7 @@ $('start').onclick = () => runExperiment(false);
 $('stop').onclick = () => { aborted = true; speechSynthesis?.cancel(); abortWaiters.forEach(f => f()); };
 
 // ─── 저장 ───
-const COLS = ['pid','practice','order','block','video','trial','level','problem','correct_answer','t_baseline_start','t_problem','t_speech_end','t_answer','rt','timeout','response','is_correct','rating'];
+const COLS = ['pid','practice','shade','order','block','video','trial','level','problem','correct_answer','t_baseline_start','t_problem','t_speech_end','t_answer','rt','timeout','response','is_correct','rating'];
 function csvBlob() {
   const esc = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
   const body = [COLS.join(','), ...rows.map(r => COLS.map(c => esc(r[c] ?? '')).join(','))].join('\n');
