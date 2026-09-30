@@ -347,11 +347,12 @@ function stageLayout() {
 function waitTap(ms) {
   return new Promise(res => {
     const run = $('run'); let done = false;
-    const fin = how => { if (done) return; done = true; run.removeEventListener('pointerdown', onTap); document.removeEventListener('keydown', onKey); clearTimeout(tm); res(how); };
-    const onTap = e => { if (e.target.closest('#stop')) return; fin('tap'); };
+    const EV = ['pointerdown', 'touchstart', 'mousedown'];
+    const fin = how => { if (done) return; done = true; EV.forEach(t => run.removeEventListener(t, onTap, true)); document.removeEventListener('keydown', onKey); clearTimeout(tm); if (how === 'tap') $('hud').textContent += ' ✓'; res(how); };
+    const onTap = e => { if (e.target.closest && e.target.closest('#stop')) return; fin('tap'); };
     const onKey = e => { if (e.key === ' ' || e.key === 'Enter') fin('tap'); };
     const tm = setTimeout(() => fin('timeout'), ms);
-    run.addEventListener('pointerdown', onTap); document.addEventListener('keydown', onKey);
+    EV.forEach(t => run.addEventListener(t, onTap, { capture: true, passive: true })); document.addEventListener('keydown', onKey);
     abortWaiters.push(() => fin('abort'));
   });
 }
